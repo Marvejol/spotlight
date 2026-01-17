@@ -3,146 +3,235 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Spotlight Grid</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>Ethereal Bubbles</title>
     <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
     <script type="importmap">
     {
         "imports": {
-            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
         }
     }
     </script>
     <style>
-        /* Background slightly off-white to contrast with pure white blocks */
-        body { margin: 0; overflow: hidden; background-color: #eaebed; cursor: crosshair; }
+        body { margin: 0; overflow: hidden; background-color: #000000; }
         canvas { display: block; }
     </style>
 </head>
-<body class="text-slate-800 font-sans">
-
-    <div class="fixed top-10 left-10 z-10 pointer-events-none select-none">
-        <h1 class="text-[10px] font-bold tracking-[0.3em] uppercase opacity-40 mb-1">Grid System</h1>
-        <p class="text-4xl font-light tracking-tighter"><span id="credit-count">50</span></p>
-    </div>
-
+<body>
     <div id="container"></div>
 
     <script type="module">
         import * as THREE from 'three';
-        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-        let credits = 50;
-        const gridRes = 100;
-        const totalInstances = gridRes * gridRes;
-        
-        // Scene Setup
+        // --- Configuration ---
+        const config = {
+            initialCount: 300,    // How densely to pack the screen initially
+            baseRadius: 40,       // Starting size of blobs
+            growthRate: 1.5,      // How fast they grow towards target size
+            growthChance: 0.05,   // Chance per frame a blob starts growing
+            maxRadius: 250,       // Maximum size a blob can reach
+            friction: 0.9,        // Slows down movement over time
+            repulsionStrength: 0.2 // How hard they push each other away
+        };
+
+        let blobs = [];
+        let width = window.innerWidth;
+        let height = window.innerHeight;
+
+        // --- Three.js Setup (Orthographic for 2D) ---
         const scene = new THREE.Scene();
-        // Match CSS background color for the "gaps"
-        scene.background = new THREE.Color(0xeaebed); 
+        scene.background = new THREE.Color(0x000000); // Pitch black bg
 
-        // Orthographic Camera
-        const aspect = window.innerWidth / window.innerHeight;
-        const d = 35; // Slightly zoomed out to see edges better
-        const camera = new THREE.OrthographicCamera(-d * aspect, d * aspect, d, -d, 1, 1000);
-        // Positioned higher up and slightly angled to show 3D aspect of extrusion
-        camera.position.set(50, 100, 50); 
-        camera.lookAt(0, 0, 0);
+        const camera = new THREE.OrthographicCamera(width / -2, width / 2, height / 2, height / -2, 1, 1000);
+        camera.position.z = 10;
 
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(window.devicePixelRatio);
+        const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+        renderer.setSize(width, height);
         document.getElementById('container').appendChild(renderer.domElement);
 
-        // --- LIGHTING FIXES FOR SHADING ---
-
-        // 1. Ambient Light: Low intensity so shadows can exist
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
-        scene.add(ambientLight);
-        
-        // 2. Directional Light: Strong, angled light to create distinct faces
-        const dirLight = new THREE.DirectionalLight(0xffffff, 2.0);
-        // Positioned to hit the top face brightly and side faces obliquely
-        dirLight.position.set(15, 50, 25); 
-        scene.add(dirLight);
-
-        // --- GEOMETRY & MATERIAL ---
-
-        // Geometry: 0.98 size creates a tiny 0.02 gap, acting as a border
-        const geometry = new THREE.BoxGeometry(0.98, 1, 0.98); 
-        
-        // Material: Standard material reacts better to light than Lambert for "clean" look
-        const material = new THREE.MeshStandardMaterial({ 
-            color: 0xffffff, // Pure white blocks
-            roughness: 0.3,  // Slight matte finish
-            metalness: 0.0   // Not metallic
-        });
-        
-        const mesh = new THREE.InstancedMesh(geometry, material, totalInstances);
-        
-        const matrix = new THREE.Matrix4();
-        const dummy = new THREE.Object3D();
-
-        for (let i = 0; i < totalInstances; i++) {
-            const x = (i % gridRes) - gridRes / 2;
-            const z = Math.floor(i / gridRes) - gridRes / 2;
-            dummy.position.set(x, 0, z);
-            dummy.updateMatrix();
-            mesh.setMatrixAt(i, dummy.matrix);
+        // --- Texture Generation (Soft circle for blending) ---
+        function createSoftTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 128;
+            canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+            
+            // Radial gradient from opaque center to transparent edge
+            const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+            gradient.addColorStop(0, 'rgba(255,255,255,1.0)');
+            gradient.addColorStop(0.3, 'rgba(255,255,255,0.8)');
+            gradient.addColorStop(0.7, 'rgba(255,255,255,0.2)');
+            gradient.addColorStop(1, 'rgba(255,255,255,0.0)');
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, 128, 128);
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.needsUpdate = true;
+            return texture;
         }
-        scene.add(mesh);
+        const softTexture = createSoftTexture();
 
-        // Interaction logic
-        const raycaster = new THREE.Raycaster();
-        const mouse = new THREE.Vector2();
-        const heights = new Float32Array(totalInstances).fill(1);
 
-        window.addEventListener('mousedown', (event) => {
-            if (credits <= 0) return;
+        // --- Blob Class (Physics & Visuals) ---
+        class Blob {
+            constructor(x, y, radius, hue) {
+                // Physics properties
+                this.pos = new THREE.Vector2(x, y);
+                this.vel = new THREE.Vector2(0, 0);
+                this.radius = radius;
+                this.targetRadius = radius;
+                this.mass = radius * radius; // Mass proportional to area
 
-            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-
-            raycaster.setFromCamera(mouse, camera);
-            const intersection = raycaster.intersectObject(mesh);
-
-            if (intersection.length > 0) {
-                const instanceId = intersection[0].instanceId;
-                
-                heights[instanceId] += 5;
-                
-                const x = (instanceId % gridRes) - gridRes / 2;
-                const z = Math.floor(instanceId / gridRes) - gridRes / 2;
-                
-                // Move up by half the new height so it grows from the bottom
-                dummy.position.set(x, heights[instanceId] / 2 - 0.5, z);
-                dummy.scale.set(1, heights[instanceId], 1);
-                dummy.updateMatrix();
-                
-                mesh.setMatrixAt(instanceId, dummy.matrix);
-                mesh.instanceMatrix.needsUpdate = true;
-
-                credits--;
-                document.getElementById('credit-count').innerText = credits;
+                // Visual properties
+                const material = new THREE.MeshBasicMaterial({
+                    map: softTexture,
+                    color: new THREE.Color(`hsl(${hue}, 80%, 60%)`),
+                    transparent: true,
+                    opacity: 0.7, // High opacity so they cover the black background
+                    depthTest: false, // Important for proper 2D layering
+                    blending: THREE.NormalBlending // Soft blending
+                });
+                const geometry = new THREE.PlaneGeometry(1, 1);
+                this.mesh = new THREE.Mesh(geometry, material);
+                scene.add(this.mesh);
+                this.updateVisuals();
             }
-        });
 
-        window.addEventListener('resize', () => {
-            const newAspect = window.innerWidth / window.innerHeight;
-            camera.left = -d * newAspect;
-            camera.right = d * newAspect;
-            camera.top = d;
-            camera.bottom = -d;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
+            grow() {
+                // Random area increment converted to radius
+                const addedArea = Math.random() * 10000;
+                const currentArea = Math.PI * this.targetRadius * this.targetRadius;
+                const newArea = currentArea + addedArea;
+                this.targetRadius = Math.sqrt(newArea / Math.PI);
+                // Cap the size
+                this.targetRadius = Math.min(this.targetRadius, config.maxRadius);
+            }
 
+            updatePhysics() {
+                // Smooth growth
+                this.radius += (this.targetRadius - this.radius) * 0.05;
+                this.mass = this.radius * this.radius;
+
+                // Apply velocity and friction
+                this.pos.add(this.vel);
+                this.vel.multiplyScalar(config.friction);
+
+                // Boundary constraints (keep them on screen roughly)
+                const buffer = this.radius * 0.5;
+                if (this.pos.x < -width/2 - buffer) this.vel.x += 1;
+                if (this.pos.x > width/2 + buffer) this.vel.x -= 1;
+                if (this.pos.y < -height/2 - buffer) this.vel.y += 1;
+                if (this.pos.y > height/2 + buffer) this.vel.y -= 1;
+            }
+
+            updateVisuals() {
+                // Scale mesh to match physics radius (times 2 because plane is 1x1)
+                const d = this.radius * 2.5; // 2.5 multiplier accounts for soft texture padding
+                this.mesh.scale.set(d, d, 1);
+                this.mesh.position.set(this.pos.x, this.pos.y, 0);
+            }
+        }
+
+
+        // --- Initialization ---
+        function init() {
+            // Create an initial grid-like arrangement to cover the screen
+            const cols = Math.sqrt(config.initialCount * (width/height));
+            const rows = config.initialCount / cols;
+            const cellW = width / cols;
+            const cellH = height / rows;
+
+            for(let i = 0; i < cols; i++) {
+                for(let j = 0; j < rows; j++) {
+                    // Add some jitter to initial positions
+                    const x = (i * cellW) - width/2 + (Math.random() * cellW * 0.5);
+                    const y = (j * cellH) - height/2 + (Math.random() * cellH * 0.5);
+                    const hue = Math.random() * 360;
+                    blobs.push(new Blob(x, y, config.baseRadius, hue));
+                }
+            }
+        }
+        init();
+
+
+        // --- Physics Solver (Collision Resolution) ---
+        function resolveCollisions() {
+            for (let i = 0; i < blobs.length; i++) {
+                for (let j = i + 1; j < blobs.length; j++) {
+                    const b1 = blobs[i];
+                    const b2 = blobs[j];
+
+                    // Calculate distance between centers
+                    const dx = b2.pos.x - b1.pos.x;
+                    const dy = b2.pos.y - b1.pos.y;
+                    const distanceSq = dx * dx + dy * dy;
+                    const minDist = b1.radius + b2.radius;
+
+                    // If they overlap
+                    if (distanceSq < minDist * minDist) {
+                        const distance = Math.sqrt(distanceSq) || 0.01; // Avoid divide by zero
+                        const overlap = minDist - distance;
+
+                        // Normalized vector pointing from b1 to b2
+                        const nx = dx / distance;
+                        const ny = dy / distance;
+
+                        // Distribute the push based on relative mass (bigger things move less)
+                        const totalMass = b1.mass + b2.mass;
+                        const ratio1 = b2.mass / totalMass;
+                        const ratio2 = b1.mass / totalMass;
+
+                        // Push them apart
+                        const force = overlap * config.repulsionStrength;
+                        b1.vel.x -= nx * force * ratio1;
+                        b1.vel.y -= ny * force * ratio1;
+                        b2.vel.x += nx * force * ratio2;
+                        b2.vel.y += ny * force * ratio2;
+                    }
+                }
+            }
+        }
+
+
+        // --- Animation Loop ---
         function animate() {
             requestAnimationFrame(animate);
+
+            // 1. Trigger growth randomly
+            if (Math.random() < config.growthChance) {
+                const luckyBlob = blobs[Math.floor(Math.random() * blobs.length)];
+                luckyBlob.grow();
+            }
+
+            // 2. Update Physics
+            blobs.forEach(b => b.updatePhysics());
+            
+            // 3. Resolve Collisions (Run multiple iterations for stability)
+            for(let i = 0; i < 3; i++) {
+                resolveCollisions();
+            }
+            
+            // 4. Update Visuals
+            blobs.forEach(b => b.updateVisuals());
+
             renderer.render(scene, camera);
         }
         animate();
+
+
+        // --- Resize Handling ---
+        window.addEventListener('resize', () => {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            camera.left = width / -2;
+            camera.right = width / 2;
+            camera.top = height / 2;
+            camera.bottom = height / -2;
+            camera.updateProjectionMatrix();
+            renderer.setSize(width, height);
+        });
+
     </script>
 </body>
 </html>

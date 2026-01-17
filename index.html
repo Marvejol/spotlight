@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ethereal Bubbles</title>
+    <title>Grainy Viscous Blobs</title>
     <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
     <script type="importmap">
     {
@@ -20,123 +20,178 @@
 <body>
     <div id="container"></div>
 
+    <script type="x-shader/x-vertex" id="vertexshader">
+        varying vec2 vUv;
+        void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+        }
+    </script>
+
+    <script type="x-shader/x-fragment" id="fragmentshader">
+        varying vec2 vUv;
+        uniform float uTime;
+        uniform vec3 uColor;
+        uniform float uGrainScale;
+
+        // --- Simplex Noise functions (standard GLSL noise implementation) ---
+        vec3 permute(vec3 x) { return mod(((x*34.0)+1.0)*x, 289.0); }
+        float snoise(vec2 v){
+            const vec4 C = vec4(0.211324865405187, 0.366025403784439, -0.577350269189626, 0.024390243902439);
+            vec2 i  = floor(v + dot(v, C.yy) );
+            vec2 x0 = v - i + dot(i, C.xx);
+            vec2 i1;
+            i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+            vec4 x12 = x0.xyxy + C.xxzz;
+            x12.xy -= i1;
+            i = mod(i, 289.0);
+            vec3 p = permute( permute( i.y + vec3(0.0, i1.y, 1.0 )) + i.x + vec3(0.0, i1.x, 1.0 ));
+            vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
+            m = m*m ;
+            m = m*m ;
+            vec3 x = 2.0 * fract(p * C.www) - 1.0;
+            vec3 h = abs(x) - 0.5;
+            vec3 ox = floor(x + 0.5);
+            vec3 a0 = x - ox;
+            m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h );
+            vec3 g;
+            g.x  = a0.x  * x0.x  + h.x  * x0.y;
+            g.yz = a0.yz * x12.xz + h.yz * x12.yw;
+            return 130.0 * dot(m, g);
+        }
+
+        // Simple hash for grain
+        float random(vec2 st) {
+            return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
+        }
+
+        void main() {
+            vec2 center = vec2(0.5, 0.5);
+            vec2 pos = vUv - center;
+            float dist = length(pos);
+            float angle = atan(pos.y, pos.x);
+
+            // --- Viscous Wobble ---
+            // Use noise based on angle and time to distort the distance field
+            // This makes the border wavy instead of a perfect circle
+            float wobble = snoise(vec2(angle * 3.0, uTime * 0.3)) * 0.08; // Adjust 3.0 for wave frequency, 0.08 for wave depth
+            float perturbedDist = dist + wobble;
+            
+            // Define soft edge based on distorted distance
+            // Smoothstep creates the "middle ground" border—not rigid, not totally blurry
+            float alpha = 1.0 - smoothstep(0.35, 0.48, perturbedDist);
+
+            // --- Grainy Texture ---
+            // Calculate high frequency noise specifically for grain
+            float noiseVal = snoise(vUv * uGrainScale + uTime * 0.5);
+            // Mix the noise into the color to create gradient patches
+            vec3 mixedColor = mix(uColor * 0.7, uColor * 1.3, noiseVal * 0.5 + 0.5);
+            
+            // Add fine film grain on top
+            float fineGrain = random(vUv * uTime) * 0.15;
+            mixedColor += fineGrain;
+
+            gl_FragColor = vec4(mixedColor, alpha * 0.85); // 0.85 overall opacity
+        }
+    </script>
+
     <script type="module">
         import * as THREE from 'three';
 
         // --- Configuration ---
         const config = {
-            initialCount: 300,    // How densely to pack the screen initially
-            baseRadius: 40,       // Starting size of blobs
-            growthRate: 1.5,      // How fast they grow towards target size
-            growthChance: 0.05,   // Chance per frame a blob starts growing
-            maxRadius: 250,       // Maximum size a blob can reach
-            friction: 0.9,        // Slows down movement over time
-            repulsionStrength: 0.2 // How hard they push each other away
+            initialCount: 250,
+            baseRadius: 50,
+            growthRate: 2.0,
+            growthChance: 0.08,
+            maxRadius: 300,
+            friction: 0.92,
+            repulsionStrength: 0.3,
+            grainScale: 3.0 // Controls how "chunky" the internal gradients are
         };
 
         let blobs = [];
         let width = window.innerWidth;
         let height = window.innerHeight;
+        let globalTime = 0;
 
-        // --- Three.js Setup (Orthographic for 2D) ---
+        // --- Three.js Setup ---
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x000000); // Pitch black bg
-
+        scene.background = new THREE.Color(0x000000);
         const camera = new THREE.OrthographicCamera(width / -2, width / 2, height / 2, height / -2, 1, 1000);
         camera.position.z = 10;
-
-        const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+        const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false }); // Antialias off for grittier look
         renderer.setSize(width, height);
         document.getElementById('container').appendChild(renderer.domElement);
 
-        // --- Texture Generation (Soft circle for blending) ---
-        function createSoftTexture() {
-            const canvas = document.createElement('canvas');
-            canvas.width = 128;
-            canvas.height = 128;
-            const ctx = canvas.getContext('2d');
-            
-            // Radial gradient from opaque center to transparent edge
-            const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
-            gradient.addColorStop(0, 'rgba(255,255,255,1.0)');
-            gradient.addColorStop(0.3, 'rgba(255,255,255,0.8)');
-            gradient.addColorStop(0.7, 'rgba(255,255,255,0.2)');
-            gradient.addColorStop(1, 'rgba(255,255,255,0.0)');
-            
-            ctx.fillStyle = gradient;
-            ctx.fillRect(0, 0, 128, 128);
-            
-            const texture = new THREE.CanvasTexture(canvas);
-            texture.needsUpdate = true;
-            return texture;
-        }
-        const softTexture = createSoftTexture();
+        // Get shader code from DOM
+        const vShader = document.getElementById('vertexshader').textContent;
+        const fShader = document.getElementById('fragmentshader').textContent;
 
+        // common geometry used by all blobs
+        const planeGeometry = new THREE.PlaneGeometry(1, 1);
 
-        // --- Blob Class (Physics & Visuals) ---
+        // --- Blob Class ---
         class Blob {
             constructor(x, y, radius, hue) {
-                // Physics properties
                 this.pos = new THREE.Vector2(x, y);
                 this.vel = new THREE.Vector2(0, 0);
                 this.radius = radius;
                 this.targetRadius = radius;
-                this.mass = radius * radius; // Mass proportional to area
+                this.mass = radius * radius;
 
-                // Visual properties
-                const material = new THREE.MeshBasicMaterial({
-                    map: softTexture,
-                    color: new THREE.Color(`hsl(${hue}, 80%, 60%)`),
+                const color = new THREE.Color(`hsl(${hue}, 75%, 55%)`);
+                
+                // USE SHADER MATERIAL INSTEAD OF BASIC MATERIAL
+                this.uniforms = {
+                    uTime: { value: 0.0 },
+                    uColor: { value: color },
+                    uGrainScale: { value: config.grainScale }
+                };
+
+                const material = new THREE.ShaderMaterial({
+                    uniforms: this.uniforms,
+                    vertexShader: vShader,
+                    fragmentShader: fShader,
                     transparent: true,
-                    opacity: 0.7, // High opacity so they cover the black background
-                    depthTest: false, // Important for proper 2D layering
-                    blending: THREE.NormalBlending // Soft blending
+                    depthTest: false,
+                    blending: THREE.NormalBlending
                 });
-                const geometry = new THREE.PlaneGeometry(1, 1);
-                this.mesh = new THREE.Mesh(geometry, material);
+
+                this.mesh = new THREE.Mesh(planeGeometry, material);
                 scene.add(this.mesh);
-                this.updateVisuals();
+                this.updateVisuals(0);
             }
 
             grow() {
-                // Random area increment converted to radius
-                const addedArea = Math.random() * 10000;
+                const addedArea = Math.random() * 15000;
                 const currentArea = Math.PI * this.targetRadius * this.targetRadius;
-                const newArea = currentArea + addedArea;
-                this.targetRadius = Math.sqrt(newArea / Math.PI);
-                // Cap the size
+                this.targetRadius = Math.sqrt((currentArea + addedArea) / Math.PI);
                 this.targetRadius = Math.min(this.targetRadius, config.maxRadius);
             }
 
             updatePhysics() {
-                // Smooth growth
-                this.radius += (this.targetRadius - this.radius) * 0.05;
+                this.radius += (this.targetRadius - this.radius) * 0.06;
                 this.mass = this.radius * this.radius;
-
-                // Apply velocity and friction
                 this.pos.add(this.vel);
                 this.vel.multiplyScalar(config.friction);
-
-                // Boundary constraints (keep them on screen roughly)
-                const buffer = this.radius * 0.5;
-                if (this.pos.x < -width/2 - buffer) this.vel.x += 1;
-                if (this.pos.x > width/2 + buffer) this.vel.x -= 1;
-                if (this.pos.y < -height/2 - buffer) this.vel.y += 1;
-                if (this.pos.y > height/2 + buffer) this.vel.y -= 1;
+                // Keep near center
+                this.vel.add(this.pos.clone().multiplyScalar(-0.0005));
             }
 
-            updateVisuals() {
-                // Scale mesh to match physics radius (times 2 because plane is 1x1)
-                const d = this.radius * 2.5; // 2.5 multiplier accounts for soft texture padding
+            updateVisuals(time) {
+                // Update shader time uniform for wobble animation
+                this.uniforms.uTime.value = time;
+                // Scale mesh (multiplied by 2.2 to account for shader padding)
+                const d = this.radius * 2.2;
                 this.mesh.scale.set(d, d, 1);
                 this.mesh.position.set(this.pos.x, this.pos.y, 0);
             }
         }
 
 
-        // --- Initialization ---
+        // --- Initialization & Physics (Same as before) ---
         function init() {
-            // Create an initial grid-like arrangement to cover the screen
             const cols = Math.sqrt(config.initialCount * (width/height));
             const rows = config.initialCount / cols;
             const cellW = width / cols;
@@ -144,83 +199,62 @@
 
             for(let i = 0; i < cols; i++) {
                 for(let j = 0; j < rows; j++) {
-                    // Add some jitter to initial positions
                     const x = (i * cellW) - width/2 + (Math.random() * cellW * 0.5);
                     const y = (j * cellH) - height/2 + (Math.random() * cellH * 0.5);
-                    const hue = Math.random() * 360;
+                    // Limit hue range slightly to avoid "sludge" colors
+                    const hue = Math.random() * 340; 
                     blobs.push(new Blob(x, y, config.baseRadius, hue));
                 }
             }
         }
         init();
 
-
-        // --- Physics Solver (Collision Resolution) ---
         function resolveCollisions() {
             for (let i = 0; i < blobs.length; i++) {
                 for (let j = i + 1; j < blobs.length; j++) {
                     const b1 = blobs[i];
                     const b2 = blobs[j];
-
-                    // Calculate distance between centers
                     const dx = b2.pos.x - b1.pos.x;
                     const dy = b2.pos.y - b1.pos.y;
                     const distanceSq = dx * dx + dy * dy;
+                    // Physics still uses circular collision for stability
                     const minDist = b1.radius + b2.radius;
 
-                    // If they overlap
                     if (distanceSq < minDist * minDist) {
-                        const distance = Math.sqrt(distanceSq) || 0.01; // Avoid divide by zero
+                        const distance = Math.sqrt(distanceSq) || 0.01;
                         const overlap = minDist - distance;
-
-                        // Normalized vector pointing from b1 to b2
                         const nx = dx / distance;
                         const ny = dy / distance;
-
-                        // Distribute the push based on relative mass (bigger things move less)
                         const totalMass = b1.mass + b2.mass;
-                        const ratio1 = b2.mass / totalMass;
-                        const ratio2 = b1.mass / totalMass;
-
-                        // Push them apart
                         const force = overlap * config.repulsionStrength;
-                        b1.vel.x -= nx * force * ratio1;
-                        b1.vel.y -= ny * force * ratio1;
-                        b2.vel.x += nx * force * ratio2;
-                        b2.vel.y += ny * force * ratio2;
+                        b1.vel.x -= nx * force * (b2.mass / totalMass);
+                        b1.vel.y -= ny * force * (b2.mass / totalMass);
+                        b2.vel.x += nx * force * (b1.mass / totalMass);
+                        b2.vel.y += ny * force * (b1.mass / totalMass);
                     }
                 }
             }
         }
 
-
         // --- Animation Loop ---
         function animate() {
             requestAnimationFrame(animate);
+            globalTime += 0.02;
 
-            // 1. Trigger growth randomly
             if (Math.random() < config.growthChance) {
-                const luckyBlob = blobs[Math.floor(Math.random() * blobs.length)];
-                luckyBlob.grow();
+                blobs[Math.floor(Math.random() * blobs.length)].grow();
             }
 
-            // 2. Update Physics
             blobs.forEach(b => b.updatePhysics());
+            for(let i = 0; i < 3; i++) resolveCollisions();
             
-            // 3. Resolve Collisions (Run multiple iterations for stability)
-            for(let i = 0; i < 3; i++) {
-                resolveCollisions();
-            }
-            
-            // 4. Update Visuals
-            blobs.forEach(b => b.updateVisuals());
+            // Pass global time to visual update
+            blobs.forEach(b => b.updateVisuals(globalTime));
 
             renderer.render(scene, camera);
         }
         animate();
 
-
-        // --- Resize Handling ---
         window.addEventListener('resize', () => {
             width = window.innerWidth;
             height = window.innerHeight;

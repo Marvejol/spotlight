@@ -1,7 +1,7 @@
 <html lang="en"><head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Snappy Spiky Mosaic - Edge Fix</title>
+    <title>Snappy Mosaic - Grid & Static Grain</title>
     <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
     <script type="importmap">
     {
@@ -11,14 +11,14 @@
     }
     </script>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #000; cursor: crosshair; font-family: sans-serif; }
+        body { margin: 0; overflow: hidden; background-color: #050505; cursor: crosshair; font-family: sans-serif; }
         canvas { display: block; }
         #ui { position: fixed; top: 20px; right: 20px; z-index: 100; }
         .btn {
-            background: white; color: black; border: none; padding: 10px 18px; 
-            border-radius: 20px; cursor: pointer; font-weight: bold; 
+            background: #fafafa; color: #111; border: none; padding: 10px 18px; 
+            border-radius: 2px; cursor: pointer; font-weight: bold; 
             font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            box-shadow: 3px 3px 0px rgba(255,255,255,0.2);
         }
     </style>
 </head>
@@ -28,14 +28,18 @@
 
     <script type="x-shader/x-vertex" id="vertexshader">
         varying vec2 vUv;
+        varying vec4 vScreenPos;
         void main() {
             vUv = uv;
-            gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+            vec4 mvPosition = modelViewMatrix * vec4( position, 1.0 );
+            vScreenPos = projectionMatrix * mvPosition;
+            gl_Position = projectionMatrix * mvPosition;
         }
     </script>
 
     <script type="x-shader/x-fragment" id="fragmentshader">
         varying vec2 vUv;
+        varying vec4 vScreenPos;
         uniform vec3 uColor;
         uniform float uSeed;
 
@@ -49,18 +53,19 @@
             float dist = length(pos);
             float angle = atan(pos.y, pos.x);
 
-            // Shape Logic (Kept as requested)
+            // Shape Logic
             float spikes = sin(angle * (8.0 + mod(uSeed, 4.0)) + uSeed) * 0.03;
             float burst = sin(angle * (12.0 + mod(uSeed, 8.0)) - uSeed) * 0.015;
             float shapeMask = 1.0 - smoothstep(0.41 + spikes + burst, 0.42 + spikes + burst, dist);
 
-            // --- RETRO GRAINY GRADIENT ---
-            // Subtle radial gradient for depth
-            vec3 gradColor = mix(uColor * 1.15, uColor * 0.85, dist * 1.5);
-            
-            // Fine-tuned paper grain
-            float grain = (random(vUv + uSeed) - 0.5) * 0.15;
-            vec3 finalColor = gradColor + grain;
+            // --- STATIC SCREEN-SPACE GRAIN ---
+            // Using gl_FragCoord makes the grain stay still on the screen
+            vec2 screenUV = gl_FragCoord.xy;
+            float staticGrain = (random(screenUV * 0.75) - 0.5) * 0.18;
+
+            // Retro Gradient
+            vec3 gradColor = mix(uColor * 1.1, uColor * 0.8, dist * 1.2);
+            vec3 finalColor = gradColor + staticGrain;
 
             gl_FragColor = vec4(finalColor, shapeMask);
         }
@@ -70,16 +75,17 @@
         import * as THREE from 'three';
 
         const config = {
-            count: 300,         // Increased density
-            popStep: 22,
-            startRadius: 18,
-            minRadius: 10,
-            maxRadius: 110,
+            count: 900,         
+            popStep: 20,
+            startRadius: 16,
+            minRadius: 8,
+            maxRadius: 100,
             growthChance: 0.01,
-            friction: 0.14,      // Snappy physics
-            repulsion: 0.65,     // Harder push for tight packing
+            friction: 0.15,      
+            repulsion: 0.7,      // Snap-back force
+            attraction: 0.005,   // "Prettier" gravity between blobs
             settleSpeed: 0.8,
-            zoomIn: 480,
+            zoomIn: 500,
             zoomOut: 1300
         };
 
@@ -89,7 +95,7 @@
         let currentZoom = config.zoomIn;
 
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x000000);
+        scene.background = new THREE.Color(0x050505);
         const camera = new THREE.OrthographicCamera(width/-2, width/2, height/2, height/-2, 1, 1000);
         camera.position.z = 10;
 
@@ -114,7 +120,7 @@
 
                 this.material = new THREE.ShaderMaterial({
                     uniforms: {
-                        uColor: { value: new THREE.Color(`hsl(${hue}, 65%, 55%)`) },
+                        uColor: { value: new THREE.Color(`hsl(${hue}, 60%, 50%)`) },
                         uSeed: { value: Math.random() * 100.0 }
                     },
                     vertexShader: vShader, fragmentShader: fShader,
@@ -133,41 +139,46 @@
                 this.pos.add(this.vel);
                 this.vel.multiplyScalar(config.friction);
 
-                // --- FIXED BORDER COLLISION ---
-                // Hard wall logic with no central gravity pull
-                const pad = this.radius * 0.5; // Bleed margin
+                // Edge Bleed Logic
+                const pad = this.radius * 0.4; 
                 const limitX = vW / 2 + pad;
                 const limitY = vH / 2 + pad;
 
-                if (this.pos.x < -limitX) { this.pos.x = -limitX; this.vel.x *= -1; }
-                if (this.pos.x >  limitX) { this.pos.x =  limitX; this.vel.x *= -1; }
-                if (this.pos.y < -limitY) { this.pos.y = -limitY; this.vel.y *= -1; }
-                if (this.pos.y >  limitY) { this.pos.y =  limitY; this.vel.y *= -1; }
+                if (this.pos.x < -limitX) { this.pos.x = -limitX; this.vel.x *= -0.5; }
+                if (this.pos.x >  limitX) { this.pos.x =  limitX; this.vel.x *= -0.5; }
+                if (this.pos.y < -limitY) { this.pos.y = -limitY; this.vel.y *= -0.5; }
+                if (this.pos.y >  limitY) { this.pos.y =  limitY; this.vel.y *= -0.5; }
             }
 
             pop() {
                 const dir = Math.random() > 0.5 ? 1 : -1;
-                this.targetRadius = THREE.MathUtils.clamp(
-                    this.targetRadius + (config.popStep * dir), 
-                    config.minRadius, 
-                    config.maxRadius
-                );
+                this.targetRadius = THREE.MathUtils.clamp(this.targetRadius + (config.popStep * dir), config.minRadius, config.maxRadius);
             }
 
             draw() {
-                const d = this.radius * 2.6; // Slightly larger plane to prevent spike clipping
+                const d = this.radius * 2.6;
                 this.mesh.scale.set(d, d, 1);
                 this.mesh.position.set(this.pos.x, this.pos.y, 0);
             }
         }
 
         function init() {
-            // Spawn in a much wider area to ensure the screen is full from the start
-            const spawnW = config.zoomOut * 1.5;
-            const spawnH = config.zoomOut * 1.5;
+            // --- GRID SPAWN TO PREVENT PILE-UP ---
+            const aspect = width / height;
+            const cols = Math.floor(Math.sqrt(config.count * aspect));
+            const rows = Math.ceil(config.count / cols);
+            
+            const spacingX = (config.zoomOut * aspect * 1.2) / cols;
+            const spacingY = (config.zoomOut * 1.2) / rows;
+
             for(let i = 0; i < config.count; i++) {
-                const x = (Math.random() - 0.5) * spawnW;
-                const y = (Math.random() - 0.5) * spawnH;
+                const r = Math.floor(i / cols);
+                const c = i % cols;
+                
+                // Position with a tiny bit of jitter to break perfect symmetry
+                const x = (c - cols/2) * spacingX + (Math.random() - 0.5) * 5;
+                const y = (r - rows/2) * spacingY + (Math.random() - 0.5) * 5;
+                
                 blobs.push(new Blob(x, y, config.startRadius, Math.random() * 360));
             }
         }
@@ -193,17 +204,28 @@
                     const dx = b2.pos.x - b1.pos.x;
                     const dy = b2.pos.y - b1.pos.y;
                     const dSq = dx*dx + dy*dy;
+                    const dist = Math.sqrt(dSq) || 0.1;
                     const minD = b1.radius + b2.radius;
                     
-                    if (dSq < minD * minD) {
-                        const dist = Math.sqrt(dSq) || 0.1;
+                    const nx = dx/dist;
+                    const ny = dy/dist;
+                    const tm = b1.mass + b2.mass;
+
+                    if (dist < minD) {
+                        // Repulsion (Same as before)
                         const overlap = (minD - dist) * config.repulsion;
-                        const nx = dx/dist, ny = dy/dist;
-                        const totalMass = b1.mass + b2.mass;
-                        b1.vel.x -= nx * overlap * (b2.mass / totalMass);
-                        b1.vel.y -= ny * overlap * (b2.mass / totalMass);
-                        b2.vel.x += nx * overlap * (b1.mass / totalMass);
-                        b2.vel.y += ny * overlap * (b1.mass / totalMass);
+                        b1.vel.x -= nx * overlap * (b2.mass / tm);
+                        b1.vel.y -= ny * overlap * (b2.mass / tm);
+                        b2.vel.x += nx * overlap * (b1.mass / tm);
+                        b2.vel.y += ny * overlap * (b1.mass / tm);
+                    } else if (dist < minD * 2.5) {
+                        // --- PRETTIER GRAVITY (Attraction) ---
+                        // Pulls blobs together when they are nearby but not touching
+                        const pull = (dist - minD) * config.attraction;
+                        b1.vel.x += nx * pull * (b2.mass / tm);
+                        b1.vel.y += ny * pull * (b2.mass / tm);
+                        b2.vel.x -= nx * pull * (b1.mass / tm);
+                        b2.vel.y -= ny * pull * (b1.mass / tm);
                     }
                 }
             }

@@ -15,15 +15,16 @@
     }
     </script>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #ffffff; cursor: crosshair; }
+        /* Background slightly off-white to contrast with pure white blocks */
+        body { margin: 0; overflow: hidden; background-color: #eaebed; cursor: crosshair; }
         canvas { display: block; }
     </style>
 </head>
-<body class="text-black font-sans">
+<body class="text-slate-800 font-sans">
 
     <div class="fixed top-10 left-10 z-10 pointer-events-none select-none">
-        <h1 class="text-[10px] font-black tracking-[0.3em] uppercase opacity-20 mb-1">Grid System</h1>
-        <p class="text-4xl font-extralight tracking-tighter"><span id="credit-count">50</span></p>
+        <h1 class="text-[10px] font-bold tracking-[0.3em] uppercase opacity-40 mb-1">Grid System</h1>
+        <p class="text-4xl font-light tracking-tighter"><span id="credit-count">50</span></p>
     </div>
 
     <div id="container"></div>
@@ -38,13 +39,15 @@
         
         // Scene Setup
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0xffffff);
+        // Match CSS background color for the "gaps"
+        scene.background = new THREE.Color(0xeaebed); 
 
-        // Orthographic Camera (makes it look flat and technical)
+        // Orthographic Camera
         const aspect = window.innerWidth / window.innerHeight;
-        const d = 30; 
+        const d = 35; // Slightly zoomed out to see edges better
         const camera = new THREE.OrthographicCamera(-d * aspect, d * aspect, d, -d, 1, 1000);
-        camera.position.set(50, 50, 50);
+        // Positioned higher up and slightly angled to show 3D aspect of extrusion
+        camera.position.set(50, 100, 50); 
         camera.lookAt(0, 0, 0);
 
         const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -52,17 +55,30 @@
         renderer.setPixelRatio(window.devicePixelRatio);
         document.getElementById('container').appendChild(renderer.domElement);
 
-        // Lighting - High intensity, no shadows for "Clean" look
-        const ambientLight = new THREE.AmbientLight(0xffffff, 2.5);
+        // --- LIGHTING FIXES FOR SHADING ---
+
+        // 1. Ambient Light: Low intensity so shadows can exist
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
         scene.add(ambientLight);
         
-        const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
-        dirLight.position.set(10, 20, 10);
+        // 2. Directional Light: Strong, angled light to create distinct faces
+        const dirLight = new THREE.DirectionalLight(0xffffff, 2.0);
+        // Positioned to hit the top face brightly and side faces obliquely
+        dirLight.position.set(15, 50, 25); 
         scene.add(dirLight);
 
-        // Instanced Mesh (10,000 blocks in 1 draw call)
-        const geometry = new THREE.BoxGeometry(1, 1, 1); // Full size, no gaps
-        const material = new THREE.MeshLambertMaterial({ color: 0xffffff });
+        // --- GEOMETRY & MATERIAL ---
+
+        // Geometry: 0.98 size creates a tiny 0.02 gap, acting as a border
+        const geometry = new THREE.BoxGeometry(0.98, 1, 0.98); 
+        
+        // Material: Standard material reacts better to light than Lambert for "clean" look
+        const material = new THREE.MeshStandardMaterial({ 
+            color: 0xffffff, // Pure white blocks
+            roughness: 0.3,  // Slight matte finish
+            metalness: 0.0   // Not metallic
+        });
+        
         const mesh = new THREE.InstancedMesh(geometry, material, totalInstances);
         
         const matrix = new THREE.Matrix4();
@@ -94,14 +110,13 @@
             if (intersection.length > 0) {
                 const instanceId = intersection[0].instanceId;
                 
-                // Growth Logic
-                heights[instanceId] += 4;
+                heights[instanceId] += 5;
                 
-                // Update specific instance
                 const x = (instanceId % gridRes) - gridRes / 2;
                 const z = Math.floor(instanceId / gridRes) - gridRes / 2;
                 
-                dummy.position.set(x, heights[instanceId] / 2, z);
+                // Move up by half the new height so it grows from the bottom
+                dummy.position.set(x, heights[instanceId] / 2 - 0.5, z);
                 dummy.scale.set(1, heights[instanceId], 1);
                 dummy.updateMatrix();
                 
@@ -113,7 +128,6 @@
             }
         });
 
-        // Resize
         window.addEventListener('resize', () => {
             const newAspect = window.innerWidth / window.innerHeight;
             camera.left = -d * newAspect;

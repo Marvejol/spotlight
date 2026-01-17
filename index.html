@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Damped Viscous Patchwork</title>
+    <title>Equilibrium Patchwork</title>
     <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
     <script type="importmap">
     {
@@ -67,18 +67,18 @@
             float dist = length(pos);
             float angle = atan(pos.y, pos.x);
 
-            float wobble = snoise(vec2(angle * 3.5, uTime * 0.2)) * 0.04;
+            float wobble = snoise(vec2(angle * 3.0, uTime * 0.15)) * 0.035;
             float perturbedDist = dist + wobble;
             
-            float alpha = 1.0 - smoothstep(0.40, 0.45, perturbedDist);
+            float alpha = 1.0 - smoothstep(0.42, 0.45, perturbedDist);
 
-            float noiseVal = snoise(vUv * uGrainScale + uTime * 0.1);
-            vec3 mixedColor = mix(uColor * 0.9, uColor * 1.1, noiseVal * 0.5 + 0.5);
+            float noiseVal = snoise(vUv * uGrainScale + uTime * 0.05);
+            vec3 mixedColor = mix(uColor * 0.92, uColor * 1.08, noiseVal * 0.5 + 0.5);
             
-            float fineGrain = random(vUv * uTime) * 0.1;
+            float fineGrain = random(vUv * uTime) * 0.08;
             mixedColor += fineGrain;
 
-            gl_FragColor = vec4(mixedColor, alpha * 0.95);
+            gl_FragColor = vec4(mixedColor, alpha * 0.98);
         }
     </script>
 
@@ -86,13 +86,14 @@
         import * as THREE from 'three';
 
         const config = {
-            initialCount: 800,    // Increased density
-            baseRadius: 15,       // Even smaller items
-            growthChance: 0.05,   // Fewer random surges for more stability
-            maxRadius: 120,       // Tight cap
-            friction: 0.82,       // MUCH higher friction for quicker settling (0.94 -> 0.82)
-            repulsion: 0.45,      // Higher repulsion for firmer structure
-            grainScale: 5.0
+            count: 1000,           // Increased density for a tighter patchwork
+            popStep: 20,           // The fixed "gradino" size increment/decrement
+            minRadius: 8,
+            maxRadius: 110,
+            growthChance: 0.03,    // Frequency of natural pops
+            friction: 0.80,        // Very high damping for instant settling
+            repulsion: 0.5,        // Firm structure
+            grainScale: 5.5
         };
 
         let blobs = [];
@@ -120,12 +121,11 @@
                 this.vel = new THREE.Vector2(0, 0);
                 this.radius = radius;
                 this.targetRadius = radius;
-                this.baseRadius = radius;
                 this.mass = radius * radius;
 
                 this.uniforms = {
                     uTime: { value: 0.0 },
-                    uColor: { value: new THREE.Color(`hsl(${hue}, 60%, 45%)`) },
+                    uColor: { value: new THREE.Color(`hsl(${hue}, 55%, 40%)`) },
                     uGrainScale: { value: config.grainScale }
                 };
 
@@ -141,25 +141,31 @@
             }
 
             update() {
-                // Decay back to base size very slowly
-                if (this.targetRadius > this.baseRadius) this.targetRadius -= 0.05;
+                // NO natural tendencies to shrink or grow back. 
+                // It stays at targetRadius forever until a pop.
 
-                // SIZE SETTLING: Quicker transition to target size
-                this.radius += (this.targetRadius - this.radius) * 0.15;
+                // Step-response sizing
+                this.radius += (this.targetRadius - this.radius) * 0.18;
                 this.mass = this.radius * this.radius;
 
-                // POSITION SETTLING: Movement is damped by high friction
+                // Position settling
                 this.pos.add(this.vel);
                 this.vel.multiplyScalar(config.friction);
                 
-                // Static Restoring Force: Pulls back to home if it drifts too far
-                this.vel.add(this.pos.clone().multiplyScalar(-0.0005));
+                // Subtle anchor to keep the screen covered
+                this.vel.add(this.pos.clone().multiplyScalar(-0.0004));
             }
 
-            surge(forceMultiplier = 1.0) {
-                // Lesser augmentation: 10-30 radius increase instead of 70
-                const growthAmount = (10 + Math.random() * 20) * forceMultiplier;
-                this.targetRadius = Math.min(this.targetRadius + growthAmount, config.maxRadius);
+            // Universal pop logic for both click and system
+            pop() {
+                const direction = Math.random() > 0.5 ? 1 : -1;
+                const change = config.popStep * direction;
+                
+                this.targetRadius = THREE.MathUtils.clamp(
+                    this.targetRadius + change, 
+                    config.minRadius, 
+                    config.maxRadius
+                );
             }
 
             draw(time) {
@@ -171,11 +177,13 @@
         }
 
         function init() {
-            for(let i = 0; i < config.initialCount; i++) {
+            for(let i = 0; i < config.count; i++) {
                 const x = (Math.random() - 0.5) * width;
                 const y = (Math.random() - 0.5) * height;
                 const hue = Math.random() * 360;
-                blobs.push(new Blob(x, y, config.baseRadius, hue));
+                // Initial random size
+                const startSize = config.minRadius + Math.random() * 30;
+                blobs.push(new Blob(x, y, startSize, hue));
             }
         }
         init();
@@ -187,12 +195,11 @@
             const intersects = raycaster.intersectObjects(scene.children);
             if (intersects.length > 0) {
                 const hitBlob = intersects[0].object.userData.parentBlob;
-                if (hitBlob) hitBlob.surge(1.2); 
+                if (hitBlob) hitBlob.pop(); 
             }
         });
 
         function resolve() {
-            // High frequency solver: resolve overlaps firmly
             for (let i = 0; i < blobs.length; i++) {
                 const b1 = blobs[i];
                 for (let j = i + 1; j < blobs.length; j++) {
@@ -204,7 +211,6 @@
                         const dist = Math.sqrt(dSq) || 0.1;
                         const overlap = (minD - dist) * config.repulsion;
                         const nx = dx/dist, ny = dy/dist;
-                        // Displacement is immediate and firm
                         b1.vel.x -= nx * overlap * 0.5;
                         b1.vel.y -= ny * overlap * 0.5;
                         b2.vel.x += nx * overlap * 0.5;
@@ -216,14 +222,13 @@
 
         function animate() {
             requestAnimationFrame(animate);
-            globalTime += 0.01; // Slower time for more stable wobble
+            globalTime += 0.01;
 
             if (Math.random() < config.growthChance) {
-                blobs[Math.floor(Math.random() * blobs.length)].surge(0.5);
+                blobs[Math.floor(Math.random() * blobs.length)].pop();
             }
 
             blobs.forEach(b => b.update());
-            // Solve 3 times per frame for high stability/settling
             for(let i=0; i<3; i++) resolve();
             blobs.forEach(b => b.draw(globalTime));
 

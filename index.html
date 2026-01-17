@@ -1,7 +1,7 @@
 <html lang="en"><head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Snappy Mosaic - Grid & Static Grain</title>
+    <title>Snappy Mosaic - Fixed Physics & Paper Grain</title>
     <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
     <script type="importmap">
     {
@@ -11,14 +11,14 @@
     }
     </script>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #050505; cursor: crosshair; font-family: sans-serif; }
+        body { margin: 0; overflow: hidden; background-color: #080808; cursor: crosshair; font-family: sans-serif; }
         canvas { display: block; }
         #ui { position: fixed; top: 20px; right: 20px; z-index: 100; }
         .btn {
-            background: #fafafa; color: #111; border: none; padding: 10px 18px; 
-            border-radius: 2px; cursor: pointer; font-weight: bold; 
+            background: #fff; color: #000; border: none; padding: 10px 18px; 
+            border-radius: 20px; cursor: pointer; font-weight: bold; 
             font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
-            box-shadow: 3px 3px 0px rgba(255,255,255,0.2);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
         }
     </style>
 </head>
@@ -28,23 +28,20 @@
 
     <script type="x-shader/x-vertex" id="vertexshader">
         varying vec2 vUv;
-        varying vec4 vScreenPos;
         void main() {
             vUv = uv;
-            vec4 mvPosition = modelViewMatrix * vec4( position, 1.0 );
-            vScreenPos = projectionMatrix * mvPosition;
-            gl_Position = projectionMatrix * mvPosition;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
         }
     </script>
 
     <script type="x-shader/x-fragment" id="fragmentshader">
         varying vec2 vUv;
-        varying vec4 vScreenPos;
         uniform vec3 uColor;
         uniform float uSeed;
 
-        float random(vec2 st) {
-            return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
+        // Paper noise function
+        float noise(vec2 p) {
+            return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
         }
 
         void main() {
@@ -58,14 +55,15 @@
             float burst = sin(angle * (12.0 + mod(uSeed, 8.0)) - uSeed) * 0.015;
             float shapeMask = 1.0 - smoothstep(0.41 + spikes + burst, 0.42 + spikes + burst, dist);
 
-            // --- STATIC SCREEN-SPACE GRAIN ---
-            // Using gl_FragCoord makes the grain stay still on the screen
+            // --- SUBTLE STATIC PAPER GRAIN ---
             vec2 screenUV = gl_FragCoord.xy;
-            float staticGrain = (random(screenUV * 0.75) - 0.5) * 0.18;
-
-            // Retro Gradient
-            vec3 gradColor = mix(uColor * 1.1, uColor * 0.8, dist * 1.2);
-            vec3 finalColor = gradColor + staticGrain;
+            // High frequency, low amplitude for "paper" feel
+            float paper = noise(screenUV * 0.9) * 0.08;
+            float grain = noise(screenUV * 0.1) * 0.04;
+            
+            vec3 finalColor = uColor * (0.9 + paper + grain);
+            // Subtle edge darkening on the blob itself
+            finalColor *= (1.0 - dist * 0.3);
 
             gl_FragColor = vec4(finalColor, shapeMask);
         }
@@ -75,18 +73,18 @@
         import * as THREE from 'three';
 
         const config = {
-            count: 900,         
+            count: 850,         
             popStep: 20,
-            startRadius: 16,
-            minRadius: 8,
-            maxRadius: 100,
-            growthChance: 0.01,
-            friction: 0.15,      
-            repulsion: 0.7,      // Snap-back force
-            attraction: 0.005,   // "Prettier" gravity between blobs
-            settleSpeed: 0.8,
-            zoomIn: 500,
-            zoomOut: 1300
+            startRadius: 18,
+            minRadius: 10,
+            maxRadius: 110,
+            friction: 0.12,      
+            repulsion: 0.8,      // Stronger to fight clumps
+            attraction: 0.0015,   // Much weaker, subtle gravity
+            boundaryForce: 0.2,  // Force pushing away from edges
+            settleSpeed: 0.75,
+            zoomIn: 550,
+            zoomOut: 1400
         };
 
         let blobs = [];
@@ -95,7 +93,7 @@
         let currentZoom = config.zoomIn;
 
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x050505);
+        scene.background = new THREE.Color(0x080808);
         const camera = new THREE.OrthographicCamera(width/-2, width/2, height/2, height/-2, 1, 1000);
         camera.position.z = 10;
 
@@ -120,7 +118,7 @@
 
                 this.material = new THREE.ShaderMaterial({
                     uniforms: {
-                        uColor: { value: new THREE.Color(`hsl(${hue}, 60%, 50%)`) },
+                        uColor: { value: new THREE.Color(`hsl(${hue}, 55%, 55%)`) },
                         uSeed: { value: Math.random() * 100.0 }
                     },
                     vertexShader: vShader, fragmentShader: fShader,
@@ -139,15 +137,15 @@
                 this.pos.add(this.vel);
                 this.vel.multiplyScalar(config.friction);
 
-                // Edge Bleed Logic
-                const pad = this.radius * 0.4; 
-                const limitX = vW / 2 + pad;
-                const limitY = vH / 2 + pad;
+                // --- BOUNDARY REPULSION (NO MORE CLAMPING MONSTROSITIES) ---
+                const edgeX = vW / 2;
+                const edgeY = vH / 2;
+                const buffer = this.radius;
 
-                if (this.pos.x < -limitX) { this.pos.x = -limitX; this.vel.x *= -0.5; }
-                if (this.pos.x >  limitX) { this.pos.x =  limitX; this.vel.x *= -0.5; }
-                if (this.pos.y < -limitY) { this.pos.y = -limitY; this.vel.y *= -0.5; }
-                if (this.pos.y >  limitY) { this.pos.y =  limitY; this.vel.y *= -0.5; }
+                if (this.pos.x < -edgeX + buffer) this.vel.x += config.boundaryForce;
+                if (this.pos.x >  edgeX - buffer) this.vel.x -= config.boundaryForce;
+                if (this.pos.y < -edgeY + buffer) this.vel.y += config.boundaryForce;
+                if (this.pos.y >  edgeY - buffer) this.vel.y -= config.boundaryForce;
             }
 
             pop() {
@@ -163,22 +161,18 @@
         }
 
         function init() {
-            // --- GRID SPAWN TO PREVENT PILE-UP ---
+            // Precise grid spawn
             const aspect = width / height;
             const cols = Math.floor(Math.sqrt(config.count * aspect));
             const rows = Math.ceil(config.count / cols);
-            
-            const spacingX = (config.zoomOut * aspect * 1.2) / cols;
-            const spacingY = (config.zoomOut * 1.2) / rows;
+            const spacingX = (config.zoomOut * aspect) / cols;
+            const spacingY = config.zoomOut / rows;
 
             for(let i = 0; i < config.count; i++) {
                 const r = Math.floor(i / cols);
                 const c = i % cols;
-                
-                // Position with a tiny bit of jitter to break perfect symmetry
-                const x = (c - cols/2) * spacingX + (Math.random() - 0.5) * 5;
-                const y = (r - rows/2) * spacingY + (Math.random() - 0.5) * 5;
-                
+                const x = (c - cols/2) * spacingX;
+                const y = (r - rows/2) * spacingY;
                 blobs.push(new Blob(x, y, config.startRadius, Math.random() * 360));
             }
         }
@@ -197,35 +191,35 @@
         });
 
         function resolve() {
-            for (let i = 0; i < blobs.length; i++) {
-                const b1 = blobs[i];
-                for (let j = i + 1; j < blobs.length; j++) {
-                    const b2 = blobs[j];
-                    const dx = b2.pos.x - b1.pos.x;
-                    const dy = b2.pos.y - b1.pos.y;
-                    const dSq = dx*dx + dy*dy;
-                    const dist = Math.sqrt(dSq) || 0.1;
-                    const minD = b1.radius + b2.radius;
-                    
-                    const nx = dx/dist;
-                    const ny = dy/dist;
-                    const tm = b1.mass + b2.mass;
+            // Two passes for stability
+            for (let pass = 0; pass < 2; pass++) {
+                for (let i = 0; i < blobs.length; i++) {
+                    const b1 = blobs[i];
+                    for (let j = i + 1; j < blobs.length; j++) {
+                        const b2 = blobs[j];
+                        const dx = b2.pos.x - b1.pos.x;
+                        const dy = b2.pos.y - b1.pos.y;
+                        const dSq = dx*dx + dy*dy;
+                        const dist = Math.sqrt(dSq) || 0.1;
+                        const minD = b1.radius + b2.radius;
+                        
+                        const nx = dx/dist;
+                        const ny = dy/dist;
+                        const tm = b1.mass + b2.mass;
 
-                    if (dist < minD) {
-                        // Repulsion (Same as before)
-                        const overlap = (minD - dist) * config.repulsion;
-                        b1.vel.x -= nx * overlap * (b2.mass / tm);
-                        b1.vel.y -= ny * overlap * (b2.mass / tm);
-                        b2.vel.x += nx * overlap * (b1.mass / tm);
-                        b2.vel.y += ny * overlap * (b1.mass / tm);
-                    } else if (dist < minD * 2.5) {
-                        // --- PRETTIER GRAVITY (Attraction) ---
-                        // Pulls blobs together when they are nearby but not touching
-                        const pull = (dist - minD) * config.attraction;
-                        b1.vel.x += nx * pull * (b2.mass / tm);
-                        b1.vel.y += ny * pull * (b2.mass / tm);
-                        b2.vel.x -= nx * pull * (b1.mass / tm);
-                        b2.vel.y -= ny * pull * (b1.mass / tm);
+                        if (dist < minD) {
+                            const overlap = (minD - dist) * config.repulsion;
+                            b1.vel.x -= nx * overlap * (b2.mass / tm);
+                            b1.vel.y -= ny * overlap * (b2.mass / tm);
+                            b2.vel.x += nx * overlap * (b1.mass / tm);
+                            b2.vel.y += ny * overlap * (b1.mass / tm);
+                        } else if (dist < minD * 1.5) {
+                            const pull = (dist - minD) * config.attraction;
+                            b1.vel.x += nx * pull;
+                            b1.vel.y += ny * pull;
+                            b2.vel.x -= nx * pull;
+                            b2.vel.y -= ny * pull;
+                        }
                     }
                 }
             }
@@ -241,10 +235,6 @@
             camera.left = -vW / 2; camera.right = vW / 2;
             camera.top = vH / 2; camera.bottom = -vH / 2;
             camera.updateProjectionMatrix();
-
-            if (Math.random() < config.growthChance) {
-                blobs[Math.floor(Math.random() * blobs.length)].pop();
-            }
 
             blobs.forEach(b => b.update(vW, vH));
             resolve();

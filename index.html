@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Grainy Viscous Micros</title>
+    <title>Reactive Viscous Micros</title>
     <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
     <script type="importmap">
     {
@@ -13,7 +13,7 @@
     }
     </script>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #000000; }
+        body { margin: 0; overflow: hidden; background-color: #000000; cursor: pointer; }
         canvas { display: block; }
     </style>
 </head>
@@ -67,18 +67,14 @@
             float dist = length(pos);
             float angle = atan(pos.y, pos.x);
 
-            // Viscous border wobble
             float wobble = snoise(vec2(angle * 2.5, uTime * 0.4)) * 0.06;
             float perturbedDist = dist + wobble;
             
-            // Sharper but grainy border
             float alpha = 1.0 - smoothstep(0.38, 0.46, perturbedDist);
 
-            // Internal Grainy Gradients
             float noiseVal = snoise(vUv * uGrainScale + uTime * 0.3);
             vec3 mixedColor = mix(uColor * 0.8, uColor * 1.2, noiseVal * 0.5 + 0.5);
             
-            // Surface Grain
             float fineGrain = random(vUv * uTime) * 0.12;
             mixedColor += fineGrain;
 
@@ -90,12 +86,12 @@
         import * as THREE from 'three';
 
         const config = {
-            initialCount: 500,    // Doubled as requested
-            baseRadius: 20,       // Smaller base size
-            growthChance: 0.15,   // More frequent "pulsing"
-            maxRadius: 180,       // Capped lower for "smaller" feel
-            friction: 0.94,
-            repulsion: 0.25,
+            initialCount: 500,
+            baseRadius: 20,
+            growthChance: 0.12,
+            maxRadius: 190,
+            friction: 0.93,
+            repulsion: 0.28,
             grainScale: 4.5
         };
 
@@ -115,6 +111,9 @@
         const vShader = document.getElementById('vertexshader').textContent;
         const fShader = document.getElementById('fragmentshader').textContent;
         const planeGeo = new THREE.PlaneGeometry(1, 1);
+
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
 
         class Blob {
             constructor(x, y, radius, hue) {
@@ -138,33 +137,24 @@
                 });
 
                 this.mesh = new THREE.Mesh(planeGeo, this.material);
+                // Tagging the mesh with the blob instance for raycasting
+                this.mesh.userData.parentBlob = this;
                 scene.add(this.mesh);
             }
 
             update() {
-                // Growth and Decay Logic
-                // Naturally shrink towards baseRadius over time
-                if (this.targetRadius > this.baseRadius) {
-                    this.targetRadius -= 0.1;
-                }
-
-                this.radius += (this.targetRadius - this.radius) * 0.05;
+                if (this.targetRadius > this.baseRadius) this.targetRadius -= 0.12;
+                this.radius += (this.targetRadius - this.radius) * 0.06;
                 this.mass = this.radius * this.radius;
-
                 this.pos.add(this.vel);
                 this.vel.multiplyScalar(config.friction);
-
-                // Subtle gravity towards center to keep screen full
-                this.vel.add(this.pos.clone().multiplyScalar(-0.0002));
+                this.vel.add(this.pos.clone().multiplyScalar(-0.0003));
             }
 
-            surge() {
-                // Diminish or Grow randomly
-                if (Math.random() > 0.3) {
-                    this.targetRadius = Math.min(this.targetRadius + Math.random() * 60, config.maxRadius);
-                } else {
-                    this.targetRadius = Math.max(this.targetRadius - Math.random() * 40, this.baseRadius * 0.5);
-                }
+            surge(forceMultiplier = 1.0) {
+                // Growth behavior similar to the "bubble from under" logic
+                const growthAmount = (30 + Math.random() * 70) * forceMultiplier;
+                this.targetRadius = Math.min(this.targetRadius + growthAmount, config.maxRadius);
             }
 
             draw(time) {
@@ -184,6 +174,21 @@
             }
         }
         init();
+
+        // Interaction
+        window.addEventListener('mousedown', (event) => {
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(scene.children);
+
+            if (intersects.length > 0) {
+                // Grab the top-most blob mesh and trigger its surge
+                const hitBlob = intersects[0].object.userData.parentBlob;
+                if (hitBlob) hitBlob.surge(1.5); // Extra force for clicks
+            }
+        });
 
         function resolve() {
             for (let i = 0; i < blobs.length; i++) {

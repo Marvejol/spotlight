@@ -1,32 +1,32 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
+<html lang="en"><head>
     <style>
         body { transition: opacity ease-in 0.2s; } 
         body[unresolved] { opacity: 0; display: block; overflow: hidden; position: relative; } 
     </style>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Snappy Spiky Mosaic</title>
-    <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
+    <title>Snappy Spiky Mosaic with Retro Style</title>
+    <script async="" src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
     <script type="importmap">
     {
         "imports": {
-            "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
         }
     }
     </script>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #000000; cursor: crosshair; font-family: sans-serif; }
+        body { margin: 0; overflow: hidden; background-color: #111; cursor: crosshair; font-family: sans-serif; }
         canvas { display: block; }
-        #ui { position: fixed; top: 20px; right: 20px; z-index: 100; display: flex; gap: 10px; }
+        #ui {
+            position: fixed; top: 20px; right: 20px; z-index: 100;
+        }
         .btn {
-            background: white; color: black; border: none; padding: 10px 18px; 
+            background: #eee; color: #222; border: none; padding: 10px 18px; 
             border-radius: 20px; cursor: pointer; font-weight: bold; 
             font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.5); transition: transform 0.1s;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
         }
-        .btn:active { transform: scale(0.95); }
     </style>
 </head>
 <body>
@@ -42,12 +42,10 @@
             gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
         }
     </script>
-
     <script type="x-shader/x-fragment" id="fragmentshader">
         varying vec2 vUv;
         uniform vec3 uColor;
         uniform float uSeed;
-        uniform float uRadius; // Added to control spike growth relative to body
 
         float random(vec2 st) {
             return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
@@ -59,26 +57,69 @@
             float dist = length(pos);
             float angle = atan(pos.y, pos.x);
 
-            // --- NORMALIZED SPIKES ---
-            // We divide the spike height by the radius to keep them consistent 
-            // visually without messing up the physical collision boundary as much.
-            float spikeScale = 1.0 / (uRadius * 0.08); 
-            float spikes = sin(angle * (8.0 + mod(uSeed, 4.0)) + uSeed) * (0.15 * spikeScale);
-            float burst = sin(angle * (14.0 + mod(uSeed, 8.0)) - uSeed) * (0.08 * spikeScale);
+            float spikes = sin(angle * (8.0 + mod(uSeed, 4.0)) + uSeed) * 0.03;
+            float burst = sin(angle * (12.0 + mod(uSeed, 8.0)) - uSeed) * 0.015;
             
-            // Fat body threshold
-            float shapeMask = 1.0 - smoothstep(0.38 + spikes + burst, 0.40 + spikes + burst, dist);
+            float shapeMask = 1.0 - smoothstep(0.41 + spikes + burst, 0.42 + spikes + burst, dist);
 
-            // Refined Grain
-            float grain = random(vUv + uSeed) * 0.08;
+            float grain = random(vUv + uSeed) * 0.07;
             vec3 finalColor = uColor + grain;
 
             gl_FragColor = vec4(finalColor, shapeMask * 0.98);
         }
     </script>
 
+    <script type="x-shader/x-fragment" id="retroFragmentShader">
+        uniform sampler2D tDiffuse;
+        uniform float uTime;
+        varying vec2 vUv;
+
+        // Simple noise function
+        float noise(vec2 p) {
+            vec2 ip = floor(p);
+            vec2 u = fract(p);
+            u = u*u*(3.0-2.0*u);
+            
+            float res = mix(
+                mix(fract(sin(dot(ip,vec2(12.9898,78.233)))*43758.5453),
+                    fract(sin(dot(ip+vec2(1.0,0.0),vec2(12.9898,78.233)))*43758.5453),u.x),
+                mix(fract(sin(dot(ip+vec2(0.0,1.0),vec2(12.9898,78.233)))*43758.5453),
+                    fract(sin(dot(ip+vec2(1.0,1.0),vec2(12.9898,78.233)))*43758.5453),u.x),u.y);
+            return res*res;
+        }
+
+        void main() {
+            vec4 color = texture2D(tDiffuse, vUv);
+
+            // --- Grain ---
+            float strength = 0.12;
+            float x = (vUv.x + 4.0 ) * (vUv.y + 4.0 ) * (uTime * 10.0);
+            vec4 grain = vec4(mod((mod(x, 13.0) + 1.0) * (mod(x, 123.0) + 1.0), 0.01)-0.005) * strength;
+            color += grain;
+
+            // --- Vignette ---
+            vec2 pos = vUv * 2.0 - 1.0;
+            float dist = length(pos);
+            float vignette = smoothstep(1.8, 0.5, dist);
+            color.rgb *= vignette;
+            
+            // --- Retro Color grading ---
+            // Boost reds/yellows, slightly desaturate for a vintage film look
+            vec3 sepia = vec3(1.2, 1.0, 0.8);
+            color.rgb = mix(color.rgb, color.rgb * sepia, 0.3);
+            
+            // Slight scanline effect
+            // color.rgb += sin(vUv.y * 800.0) * 0.02;
+
+            gl_FragColor = color;
+        }
+    </script>
+
     <script type="module">
         import * as THREE from 'three';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 
         const config = {
             count: 950,
@@ -87,26 +128,29 @@
             minRadius: 8,
             maxRadius: 100,
             growthChance: 0.01,
-            // ZERO-MOMENTUM DYNAMICS
-            friction: 0.15,       
-            repulsion: 0.45,      
-            settleSpeed: 0.4,
+            friction: 0.12,
+            repulsion: 0.55,
+            settleSpeed: 0.75,
             zoomIn: 450,
-            zoomOut: 1400
+            zoomOut: 1400,
+            borderBounciness: 0.6 // New config for border bounce
         };
 
         let blobs = [];
         let width = window.innerWidth, height = window.innerHeight;
         let targetZoom = config.zoomIn;
         let currentZoom = config.zoomIn;
+        let composer;
 
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x000000);
+        // Darker background for retro feel
+        scene.background = new THREE.Color(0x111111); 
         const camera = new THREE.OrthographicCamera(width/-2, width/2, height/2, height/-2, 1, 1000);
         camera.position.z = 10;
 
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        const renderer = new THREE.WebGLRenderer({ antialias: false }); // Antialias off for post-processing
         renderer.setSize(width, height);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         document.getElementById('container').appendChild(renderer.domElement);
 
         const vShader = document.getElementById('vertexshader').textContent;
@@ -114,10 +158,11 @@
         const planeGeo = new THREE.PlaneGeometry(1, 1);
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2();
+        const clock = new THREE.Clock();
 
         class Blob {
             constructor(x, y, radius, hue) {
-                this.id = `CELL-${Math.floor(hue)}-${Math.random().toString(36).substring(7).toUpperCase()}`;
+                this.id = `ID-${Math.floor(hue)}`;
                 this.pos = new THREE.Vector2(x, y);
                 this.vel = new THREE.Vector2(0, 0);
                 this.radius = radius;
@@ -126,9 +171,9 @@
 
                 this.material = new THREE.ShaderMaterial({
                     uniforms: {
-                        uColor: { value: new THREE.Color(`hsl(${hue}, 60%, 70%)`) },
-                        uSeed: { value: Math.random() * 100.0 },
-                        uRadius: { value: radius }
+                        // Slightly desaturated colors for retro look
+                        uColor: { value: new THREE.Color(`hsl(${hue}, 50%, 60%)`) }, 
+                        uSeed: { value: Math.random() * 50.0 }
                     },
                     vertexShader: vShader, fragmentShader: fShader,
                     transparent: true, depthTest: false
@@ -139,27 +184,49 @@
                 scene.add(this.mesh);
             }
 
-            update() {
+            update(visibleWidth, visibleHeight) {
                 this.radius += (this.targetRadius - this.radius) * config.settleSpeed;
                 this.mass = this.radius * this.radius;
-                this.material.uniforms.uRadius.value = this.radius; // Sync radius to shader
 
                 this.pos.add(this.vel);
                 this.vel.multiplyScalar(config.friction);
                 if (this.vel.lengthSq() < 0.0001) this.vel.set(0, 0);
-                
-                // STRONG CENTRIPETAL GRAVITY
-                this.vel.add(this.pos.clone().multiplyScalar(-0.005));
+                // Reduced random movement
+                this.vel.add(this.pos.clone().multiplyScalar(-0.0001)); 
+
+                // --- BORDER COLLISION ---
+                const halfW = visibleWidth / 2;
+                const halfH = visibleHeight / 2;
+                const padding = this.radius * 0.8; // Buffer to prevent clipping
+
+                if (this.pos.x - padding < -halfW) {
+                    this.pos.x = -halfW + padding;
+                    this.vel.x *= -config.borderBounciness;
+                } else if (this.pos.x + padding > halfW) {
+                    this.pos.x = halfW - padding;
+                    this.vel.x *= -config.borderBounciness;
+                }
+
+                if (this.pos.y - padding < -halfH) {
+                    this.pos.y = -halfH + padding;
+                    this.vel.y *= -config.borderBounciness;
+                } else if (this.pos.y + padding > halfH) {
+                    this.pos.y = halfH - padding;
+                    this.vel.y *= -config.borderBounciness;
+                }
             }
 
             pop() {
                 const dir = Math.random() > 0.5 ? 1 : -1;
-                this.targetRadius = THREE.MathUtils.clamp(this.targetRadius + (config.popStep * dir), config.minRadius, config.maxRadius);
+                this.targetRadius = THREE.MathUtils.clamp(
+                    this.targetRadius + (config.popStep * dir), 
+                    config.minRadius, 
+                    config.maxRadius
+                );
             }
 
             draw() {
-                // Multiplier accommodates spikes without creating massive invisible collision zones
-                const d = this.radius * 2.6; 
+                const d = this.radius * 2.5; 
                 this.mesh.scale.set(d, d, 1);
                 this.mesh.position.set(this.pos.x, this.pos.y, 0);
             }
@@ -167,10 +234,26 @@
 
         function init() {
             for(let i = 0; i < config.count; i++) {
-                const x = (Math.random() - 0.5) * width * 1.5;
-                const y = (Math.random() - 0.5) * height * 1.5;
+                const x = (Math.random() - 0.5) * width * 0.8;
+                const y = (Math.random() - 0.5) * height * 0.8;
                 blobs.push(new Blob(x, y, config.startRadius, Math.random() * 360));
             }
+
+            // --- POST-PROCESSING SETUP ---
+            composer = new EffectComposer(renderer);
+            const renderPass = new RenderPass(scene, camera);
+            composer.addPass(renderPass);
+
+            const retroShader = {
+                uniforms: {
+                    tDiffuse: { value: null },
+                    uTime: { value: 0.0 }
+                },
+                vertexShader: document.getElementById('vertexshader').textContent, // Reuse simple vertex shader
+                fragmentShader: document.getElementById('retroFragmentShader').textContent
+            };
+            const retroPass = new ShaderPass(retroShader);
+            composer.addPass(retroPass);
         }
         init();
 
@@ -187,22 +270,24 @@
         });
 
         function resolve() {
-            // Inertia logic: larger mass resists displacement
             for (let i = 0; i < blobs.length; i++) {
                 const b1 = blobs[i];
                 for (let j = i + 1; j < blobs.length; j++) {
                     const b2 = blobs[j];
                     const dx = b2.pos.x - b1.pos.x, dy = b2.pos.y - b1.pos.y;
-                    const dSq = dx*dx + dy*dy, minD = b1.radius + b2.radius;
+                    const dSq = dx*dx + dy*dy;
+                    const minD = b1.radius + b2.radius;
+                    
                     if (dSq < minD * minD) {
                         const dist = Math.sqrt(dSq) || 0.1;
                         const overlap = (minD - dist) * config.repulsion;
                         const nx = dx/dist, ny = dy/dist;
-                        const totalM = b1.mass + b2.mass;
-                        b1.vel.x -= nx * overlap * (b2.mass / totalM);
-                        b1.vel.y -= ny * overlap * (b2.mass / totalM);
-                        b2.vel.x += nx * overlap * (b1.mass / totalM);
-                        b2.vel.y += ny * overlap * (b1.mass / totalM);
+                        
+                        const totalMass = b1.mass + b2.mass;
+                        b1.vel.x -= nx * overlap * (b2.mass / totalMass);
+                        b1.vel.y -= ny * overlap * (b2.mass / totalMass);
+                        b2.vel.x += nx * overlap * (b1.mass / totalMass);
+                        b2.vel.y += ny * overlap * (b1.mass / totalMass);
                     }
                 }
             }
@@ -210,25 +295,38 @@
 
         function animate() {
             requestAnimationFrame(animate);
-            currentZoom += (targetZoom - currentZoom) * 0.05;
+            const elapsedTime = clock.getElapsedTime();
+
+            currentZoom += (targetZoom - currentZoom) * 0.08;
             const aspect = window.innerWidth / window.innerHeight;
-            camera.left = -currentZoom * aspect / 2; camera.right = currentZoom * aspect / 2;
-            camera.top = currentZoom / 2; camera.bottom = -currentZoom / 2;
+            const visibleHeight = currentZoom;
+            const visibleWidth = currentZoom * aspect;
+
+            camera.left = -visibleWidth / 2;
+            camera.right = visibleWidth / 2;
+            camera.top = visibleHeight / 2;
+            camera.bottom = -visibleHeight / 2;
             camera.updateProjectionMatrix();
 
-            if (Math.random() < config.growthChance) blobs[Math.floor(Math.random() * blobs.length)].pop();
+            if (Math.random() < config.growthChance) {
+                blobs[Math.floor(Math.random() * blobs.length)].pop();
+            }
 
-            blobs.forEach(b => b.update());
+            // Pass visible dimensions for border collision
+            blobs.forEach(b => b.update(visibleWidth, visibleHeight));
             resolve();
             blobs.forEach(b => b.draw());
-            renderer.render(scene, camera);
+
+            // Update retro shader time
+            composer.passes[1].uniforms.uTime.value = elapsedTime;
+            composer.render();
         }
         animate();
 
         window.addEventListener('resize', () => {
             width = window.innerWidth; height = window.innerHeight;
             renderer.setSize(width, height);
+            composer.setSize(width, height); // Also resize composer
         });
     </script>
-</body>
-</html>
+</body></html>

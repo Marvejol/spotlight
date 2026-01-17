@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Overdamped Mosaic</title>
+    <title>Anchored Overdamped Mosaic</title>
     <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
     <script type="importmap">
     {
@@ -32,7 +32,7 @@
         varying vec2 vUv;
         uniform vec3 uColor;
         uniform float uGrainScale;
-        uniform float uSeed; // Unique seed per blob to keep shapes varied but static
+        uniform float uSeed;
 
         vec3 permute(vec3 x) { return mod(((x*34.0)+1.0)*x, 289.0); }
         float snoise(vec2 v){
@@ -63,13 +63,10 @@
             float dist = length(pos);
             float angle = atan(pos.y, pos.x);
 
-            // STATIC WOBBLE: Removed uTime. The shape is fixed based on its uSeed.
-            float wobble = snoise(vec2(angle * 2.5, uSeed)) * 0.02;
+            // Shape and Grain are 100% static
+            float wobble = snoise(vec2(angle * 3.0, uSeed)) * 0.02;
             float perturbedDist = dist + wobble;
-            
-            float alpha = 1.0 - smoothstep(0.43, 0.45, perturbedDist);
-
-            // STATIC GRAIN: The internal texture is fixed.
+            float alpha = 1.0 - smoothstep(0.43, 0.46, perturbedDist);
             float noiseVal = snoise(vUv * uGrainScale + uSeed);
             vec3 mixedColor = mix(uColor * 0.96, uColor * 1.04, noiseVal * 0.5 + 0.5);
             
@@ -81,15 +78,15 @@
         import * as THREE from 'three';
 
         const config = {
-            count: 1000,
-            popStep: 16,
+            count: 1200,          // High density
+            popStep: 14,          // Controlled "gradino"
             startRadius: 16,
             minRadius: 6,
-            maxRadius: 100,
-            growthChance: 0.02,
-            // CRITICAL DAMPING: Friction is very high (lower value) to stop movement instantly
-            friction: 0.65, 
-            repulsion: 0.75,
+            maxRadius: 85,
+            growthChance: 0.015,  // Very infrequent background noise
+            friction: 0.45,       // EXTREME DAMPING (stops almost immediately)
+            repulsion: 0.6,       // Forceful but local push
+            stiffness: 0.15,      // Restoring force to home position
             grainScale: 6.0
         };
 
@@ -112,15 +109,15 @@
 
         class Blob {
             constructor(x, y, radius, hue) {
+                this.homePos = new THREE.Vector2(x, y); // THE ANCHOR
                 this.pos = new THREE.Vector2(x, y);
                 this.vel = new THREE.Vector2(0, 0);
                 this.radius = radius;
                 this.targetRadius = radius;
-                this.mass = radius * radius;
 
                 this.material = new THREE.ShaderMaterial({
                     uniforms: {
-                        uColor: { value: new THREE.Color(`hsl(${hue}, 45%, 35%)`) },
+                        uColor: { value: new THREE.Color(`hsl(${hue}, 40%, 30%)`) },
                         uGrainScale: { value: config.grainScale },
                         uSeed: { value: Math.random() * 100 }
                     },
@@ -134,22 +131,22 @@
             }
 
             update() {
-                // RAPID SETTLING: Radius snaps to target with very high gain (0.3)
+                // Size Response (Gradino)
                 const dr = this.targetRadius - this.radius;
-                this.radius += dr * 0.3;
+                this.radius += dr * 0.25; 
                 if (Math.abs(dr) < 0.01) this.radius = this.targetRadius;
 
-                this.mass = this.radius * this.radius;
+                // Physics with Spatial Anchor
+                // 1. Calculate pull back to home position
+                const restoringForce = this.homePos.clone().sub(this.pos).multiplyScalar(config.stiffness);
+                this.vel.add(restoringForce);
 
-                // DEAD-STOP PHYSICS: Apply high friction
+                // 2. Apply velocity with heavy friction
                 this.pos.add(this.vel);
                 this.vel.multiplyScalar(config.friction);
-                
-                // If velocity is microscopic, kill it to prevent "ghost" wobbles
-                if (this.vel.lengthSq() < 0.001) this.vel.set(0,0);
 
-                // Weak anchor to keep center mass
-                this.vel.add(this.pos.clone().multiplyScalar(-0.0008));
+                // 3. Absolute rest threshold
+                if (this.vel.lengthSq() < 0.0001) this.vel.set(0, 0);
             }
 
             pop() {
@@ -162,13 +159,14 @@
             }
 
             draw() {
-                const d = this.radius * 2.3;
+                const d = this.radius * 2.35;
                 this.mesh.scale.set(d, d, 1);
                 this.mesh.position.set(this.pos.x, this.pos.y, 0);
             }
         }
 
         function init() {
+            // Seed the grid uniformly
             for(let i = 0; i < config.count; i++) {
                 const x = (Math.random() - 0.5) * width;
                 const y = (Math.random() - 0.5) * height;
@@ -186,19 +184,23 @@
         });
 
         function resolve() {
-            // High-frequency resolution (4 passes) for maximum stability
+            // Lower iteration count + local damping = no global ripples
             for (let i = 0; i < blobs.length; i++) {
                 const b1 = blobs[i];
                 for (let j = i + 1; j < blobs.length; j++) {
                     const b2 = blobs[j];
                     const dx = b2.pos.x - b1.pos.x, dy = b2.pos.y - b1.pos.y;
                     const dSq = dx*dx + dy*dy, minD = b1.radius + b2.radius;
+                    
                     if (dSq < minD * minD) {
                         const dist = Math.sqrt(dSq) || 0.1;
                         const overlap = (minD - dist) * config.repulsion;
                         const nx = dx/dist, ny = dy/dist;
-                        b1.vel.x -= nx * overlap * 0.5; b1.vel.y -= ny * overlap * 0.5;
-                        b2.vel.x += nx * overlap * 0.5; b2.vel.y += ny * overlap * 0.5;
+                        
+                        // Displacement is dampened immediately
+                        const force = overlap * 0.5;
+                        b1.vel.x -= nx * force; b1.vel.y -= ny * force;
+                        b2.vel.x += nx * force; b2.vel.y += ny * force;
                     }
                 }
             }
@@ -206,12 +208,16 @@
 
         function animate() {
             requestAnimationFrame(animate);
+            // Infrequent random pops
             if (Math.random() < config.growthChance) {
                 blobs[Math.floor(Math.random() * blobs.length)].pop();
             }
+            
             blobs.forEach(b => b.update());
-            for(let i=0; i<4; i++) resolve();
+            // Fewer solver passes (2) to keep interaction localized
+            for(let i=0; i<2; i++) resolve();
             blobs.forEach(b => b.draw());
+            
             renderer.render(scene, camera);
         }
         animate();

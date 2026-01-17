@@ -19,13 +19,14 @@
     <style>
         body { margin: 0; overflow: hidden; background-color: #000000; cursor: crosshair; font-family: sans-serif; }
         canvas { display: block; }
-        #ui { position: fixed; top: 20px; right: 20px; z-index: 100; }
+        #ui { position: fixed; top: 20px; right: 20px; z-index: 100; display: flex; gap: 10px; }
         .btn {
             background: white; color: black; border: none; padding: 10px 18px; 
             border-radius: 20px; cursor: pointer; font-weight: bold; 
             font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5); transition: transform 0.1s;
         }
+        .btn:active { transform: scale(0.95); }
     </style>
 </head>
 <body>
@@ -46,6 +47,7 @@
         varying vec2 vUv;
         uniform vec3 uColor;
         uniform float uSeed;
+        uniform float uRadius; // Added to control spike growth relative to body
 
         float random(vec2 st) {
             return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
@@ -57,14 +59,18 @@
             float dist = length(pos);
             float angle = atan(pos.y, pos.x);
 
-            // Spiky "Exclamative" Border Logic
-            float spikes = sin(angle * (8.0 + mod(uSeed, 4.0)) + uSeed) * 0.025;
-            float burst = sin(angle * (12.0 + mod(uSeed, 8.0)) - uSeed) * 0.012;
+            // --- NORMALIZED SPIKES ---
+            // We divide the spike height by the radius to keep them consistent 
+            // visually without messing up the physical collision boundary as much.
+            float spikeScale = 1.0 / (uRadius * 0.08); 
+            float spikes = sin(angle * (8.0 + mod(uSeed, 4.0)) + uSeed) * (0.15 * spikeScale);
+            float burst = sin(angle * (14.0 + mod(uSeed, 8.0)) - uSeed) * (0.08 * spikeScale);
             
-            float shapeMask = 1.0 - smoothstep(0.41 + spikes + burst, 0.42 + spikes + burst, dist);
+            // Fat body threshold
+            float shapeMask = 1.0 - smoothstep(0.38 + spikes + burst, 0.40 + spikes + burst, dist);
 
-            // Refined Film Grain
-            float grain = random(vUv + uSeed) * 0.07;
+            // Refined Grain
+            float grain = random(vUv + uSeed) * 0.08;
             vec3 finalColor = uColor + grain;
 
             gl_FragColor = vec4(finalColor, shapeMask * 0.98);
@@ -76,17 +82,17 @@
 
         const config = {
             count: 950,
-            popStep: 22,
+            popStep: 20,
             startRadius: 15,
             minRadius: 8,
-            maxRadius: 110,
+            maxRadius: 100,
             growthChance: 0.01,
-            // RESTORED SNAP DYNAMICS
-            friction: 0.08,       
-            repulsion: 0.95,      
-            settleSpeed: 0.8,     
+            // ZERO-MOMENTUM DYNAMICS
+            friction: 0.15,       
+            repulsion: 0.45,      
+            settleSpeed: 0.4,
             zoomIn: 450,
-            zoomOut: 1500
+            zoomOut: 1400
         };
 
         let blobs = [];
@@ -101,7 +107,6 @@
 
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(width, height);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         document.getElementById('container').appendChild(renderer.domElement);
 
         const vShader = document.getElementById('vertexshader').textContent;
@@ -112,6 +117,7 @@
 
         class Blob {
             constructor(x, y, radius, hue) {
+                this.id = `CELL-${Math.floor(hue)}-${Math.random().toString(36).substring(7).toUpperCase()}`;
                 this.pos = new THREE.Vector2(x, y);
                 this.vel = new THREE.Vector2(0, 0);
                 this.radius = radius;
@@ -121,7 +127,8 @@
                 this.material = new THREE.ShaderMaterial({
                     uniforms: {
                         uColor: { value: new THREE.Color(`hsl(${hue}, 60%, 70%)`) },
-                        uSeed: { value: Math.random() * 50.0 }
+                        uSeed: { value: Math.random() * 100.0 },
+                        uRadius: { value: radius }
                     },
                     vertexShader: vShader, fragmentShader: fShader,
                     transparent: true, depthTest: false
@@ -135,12 +142,13 @@
             update() {
                 this.radius += (this.targetRadius - this.radius) * config.settleSpeed;
                 this.mass = this.radius * this.radius;
+                this.material.uniforms.uRadius.value = this.radius; // Sync radius to shader
 
                 this.pos.add(this.vel);
                 this.vel.multiplyScalar(config.friction);
                 if (this.vel.lengthSq() < 0.0001) this.vel.set(0, 0);
                 
-                // RESTORED GRAVITY
+                // STRONG CENTRIPETAL GRAVITY
                 this.vel.add(this.pos.clone().multiplyScalar(-0.005));
             }
 
@@ -150,7 +158,8 @@
             }
 
             draw() {
-                const d = this.radius * 2.3;
+                // Multiplier accommodates spikes without creating massive invisible collision zones
+                const d = this.radius * 2.6; 
                 this.mesh.scale.set(d, d, 1);
                 this.mesh.position.set(this.pos.x, this.pos.y, 0);
             }
@@ -158,8 +167,8 @@
 
         function init() {
             for(let i = 0; i < config.count; i++) {
-                const x = (Math.random() - 0.5) * width;
-                const y = (Math.random() - 0.5) * height;
+                const x = (Math.random() - 0.5) * width * 1.5;
+                const y = (Math.random() - 0.5) * height * 1.5;
                 blobs.push(new Blob(x, y, config.startRadius, Math.random() * 360));
             }
         }
@@ -178,26 +187,22 @@
         });
 
         function resolve() {
-            // MULTI-PASS SOLVER (3) for better overlap control in high gravity
-            for (let pass = 0; pass < 3; pass++) {
-                for (let i = 0; i < blobs.length; i++) {
-                    const b1 = blobs[i];
-                    for (let j = i + 1; j < blobs.length; j++) {
-                        const b2 = blobs[j];
-                        const dx = b2.pos.x - b1.pos.x, dy = b2.pos.y - b1.pos.y;
-                        const dSq = dx*dx + dy*dy, minD = b1.radius + b2.radius;
-                        if (dSq < minD * minD) {
-                            const dist = Math.sqrt(dSq) || 0.1;
-                            const overlap = (minD - dist) * config.repulsion;
-                            const nx = dx/dist, ny = dy/dist;
-                            
-                            // INERTIA: Larger cells move less
-                            const totalM = b1.mass + b2.mass;
-                            b1.vel.x -= nx * overlap * (b2.mass / totalM);
-                            b1.vel.y -= ny * overlap * (b2.mass / totalM);
-                            b2.vel.x += nx * overlap * (b1.mass / totalM);
-                            b2.vel.y += ny * overlap * (b1.mass / totalM);
-                        }
+            // Inertia logic: larger mass resists displacement
+            for (let i = 0; i < blobs.length; i++) {
+                const b1 = blobs[i];
+                for (let j = i + 1; j < blobs.length; j++) {
+                    const b2 = blobs[j];
+                    const dx = b2.pos.x - b1.pos.x, dy = b2.pos.y - b1.pos.y;
+                    const dSq = dx*dx + dy*dy, minD = b1.radius + b2.radius;
+                    if (dSq < minD * minD) {
+                        const dist = Math.sqrt(dSq) || 0.1;
+                        const overlap = (minD - dist) * config.repulsion;
+                        const nx = dx/dist, ny = dy/dist;
+                        const totalM = b1.mass + b2.mass;
+                        b1.vel.x -= nx * overlap * (b2.mass / totalM);
+                        b1.vel.y -= ny * overlap * (b2.mass / totalM);
+                        b2.vel.x += nx * overlap * (b1.mass / totalM);
+                        b2.vel.y += ny * overlap * (b1.mass / totalM);
                     }
                 }
             }
@@ -205,7 +210,7 @@
 
         function animate() {
             requestAnimationFrame(animate);
-            currentZoom += (targetZoom - currentZoom) * 0.1;
+            currentZoom += (targetZoom - currentZoom) * 0.05;
             const aspect = window.innerWidth / window.innerHeight;
             camera.left = -currentZoom * aspect / 2; camera.right = currentZoom * aspect / 2;
             camera.top = currentZoom / 2; camera.bottom = -currentZoom / 2;
@@ -221,7 +226,8 @@
         animate();
 
         window.addEventListener('resize', () => {
-            renderer.setSize(window.innerWidth, window.innerHeight);
+            width = window.innerWidth; height = window.innerHeight;
+            renderer.setSize(width, height);
         });
     </script>
 </body>

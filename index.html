@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mosaic Fuego - Precise Selection</title>
+    <title>Mosaic Fuego - Exponential Selection</title>
     <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
     <script type="importmap">
     {
@@ -83,11 +83,8 @@
             float staticGrain = (random(screenCoord * 0.5) - 0.5) * 0.14;
             vec3 color = mix(uColor * 1.15, uColor * 0.85, dist * 1.5) + staticGrain;
 
-            // --- DOTTED LINE HIGHLIGHT ---
             if(uSelected > 0.5) {
-                // Crea il pattern tratteggiato basato sull'angolo
                 float dots = step(0.5, sin(angle * 20.0 + uTime * 5.0));
-                // Individua solo il bordo estremo
                 float border = smoothstep(edgeDist - 0.015, edgeDist, dist) * (1.0 - smoothstep(edgeDist, edgeDist + 0.005, dist));
                 color = mix(color, vec3(1.0), border * dots);
             }
@@ -108,6 +105,7 @@
                 this.id = id; this.word = word; this.pos = new THREE.Vector2(x, y);
                 this.vel = new THREE.Vector2(0, 0); this.radius = radius; this.targetRadius = radius;
                 this.mass = radius * radius;
+                this.growthFactor = 1.0; // New: Exponential decay starts at 1
                 this.material = matBase.clone();
                 this.material.uniforms.uColor.value.setHSL(hue/360, 0.65, 0.55);
                 this.material.uniforms.uSeed.value = Math.random() * 100.0;
@@ -136,15 +134,17 @@
                 if (this.vel.lengthSq() < 0.0001) this.vel.set(0,0);
             }
             pop() {
-    // Randomize the intensity of the size change
-    const changeAmount = Math.random() * 40 + 10; 
-    const direction = Math.random() > 0.4 ? 1 : -1; // 60% chance to grow, 40% to shrink
-    
-    this.targetRadius += (changeAmount * direction);
-    
-    // Clamp to keep them within visible/functional limits
-    this.targetRadius = THREE.MathUtils.clamp(this.targetRadius, 8, 150);
-}
+                // Logic: Change is multiplied by growthFactor, then factor is halved (exponential decay)
+                const baseChange = Math.random() * 80 + 20; 
+                const dir = Math.random() > 0.5 ? 1 : -1;
+                
+                this.targetRadius = THREE.MathUtils.clamp(this.targetRadius + (baseChange * this.growthFactor * dir), 10, 160);
+                
+                this.growthFactor *= 0.5; // Exponential reduction
+                
+                // Periodically reset factor so they don't stop forever
+                if(this.growthFactor < 0.01 && Math.random() < 0.05) this.growthFactor = 1.0;
+            }
             draw() { const d = this.radius * 2.6; this.mesh.scale.set(d, d, 1); this.mesh.position.set(this.pos.x, this.pos.y, 0); }
         }
 
@@ -206,13 +206,10 @@
 
             selectBlob(blob) {
                 if(!blob) return;
-                // Reset precedente selezione
                 if(this.selectedBlob) this.selectedBlob.setSelected(false);
-                
                 this.selectedBlob = blob;
                 this.selectedBlob.setSelected(true);
                 this.cameraOffset.copy(blob.pos);
-                // Niente cambio zoom o pop raggio qui come richiesto
             }
 
             search() {
@@ -233,7 +230,6 @@
                 if(hits.length > 0) {
                     this.selectBlob(hits[0].object.userData.parent);
                 } else {
-                    // Deseleziona se clicchi sul vuoto
                     if(this.selectedBlob) this.selectedBlob.setSelected(false);
                     this.selectedBlob = null;
                 }
@@ -289,10 +285,11 @@
                 this.resolvePhysics();
                 this.blobs.forEach(b => b.draw());
 
-                // Trigger 3 random blobs to change size every single frame
-for(let i = 0; i < 3; i++) {
-    this.blobs[Math.floor(Math.random() * this.config.count)].pop();
-}
+                // Trigger 2 random pops every frame to keep the field dynamic
+                for(let k = 0; k < 2; k++) {
+                    this.blobs[Math.floor(Math.random() * this.config.count)].pop();
+                }
+
                 if(Math.floor(performance.now() / 1000) % 2 === 0) this.updateUI();
                 this.renderer.render(this.scene, this.camera);
             }

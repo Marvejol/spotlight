@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Snappy Mosaic - Fixed & Fast</title>
+    <title>Snappy Mosaic - Ultimate Stable</title>
     <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
     <script type="importmap">
     {
@@ -13,63 +13,75 @@
     }
     </script>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #000; cursor: crosshair; font-family: sans-serif; }
-        #ui-layer { position: fixed; inset: 0; pointer-events: none; z-index: 10; padding: 20px; color: black; }
+        body { margin: 0; overflow: hidden; background-color: #000; cursor: crosshair; font-family: sans-serif; color: #333; }
+        canvas { display: block; }
+        #ui { position: fixed; inset: 0; pointer-events: none; z-index: 10; padding: 20px; }
         .interactive { pointer-events: auto; }
         
+        #leaderboard {
+            position: absolute; top: 20px; left: 20px; width: 220px;
+            background: rgba(255,255,255,0.95); padding: 15px; border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5); font-size: 13px;
+        }
+        #lb-content { max-height: 300px; overflow-y: auto; margin: 10px 0; border-top: 1px solid #eee; }
+        .lb-item { display: flex; justify-content: space-between; padding: 4px 0; cursor: pointer; }
+        .lb-item:hover { font-weight: bold; color: #000; }
+
         #search-box {
             position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
-            display: flex; gap: 5px; background: rgba(255,255,255,0.9); padding: 8px 15px; border-radius: 30px;
+            background: white; padding: 5px 15px; border-radius: 30px; display: flex; gap: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
         }
-        #search-input { border: none; outline: none; background: transparent; width: 200px; }
-
-        #leaderboard {
-            position: absolute; top: 20px; left: 20px; width: 200px;
-            background: rgba(255,255,255,0.9); padding: 15px; border-radius: 12px; font-size: 12px;
-        }
-        #lb-content { max-height: 200px; overflow: hidden; margin-bottom: 10px; }
-        .lb-item { display: flex; justify-content: space-between; margin-bottom: 3px; cursor: pointer; }
-        .lb-item:hover { font-weight: bold; }
+        input { border: none; outline: none; width: 180px; font-size: 14px; }
 
         .btn {
-            background: white; color: black; border: 1px solid #ccc; padding: 8px 15px; 
+            background: white; color: black; border: 1px solid #ddd; padding: 8px 16px; 
             border-radius: 20px; cursor: pointer; font-weight: bold; font-size: 10px;
-            text-transform: uppercase; box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+            text-transform: uppercase; transition: 0.2s;
         }
-        #zoomToggle { position: absolute; top: 20px; right: 20px; }
+        .btn:hover { background: #f0f0f0; }
+        #toggle-view { position: absolute; top: 20px; right: 20px; }
     </style>
 </head>
 <body>
 
-    <div id="ui-layer">
+    <div id="ui">
         <div id="leaderboard" class="interactive">
-            <b style="display:block; margin-bottom:10px; border-bottom:1px solid #ddd">TOP BLOBS</b>
+            <b style="font-size: 14px;">TOP 50 BLOBS</b>
             <div id="lb-content"></div>
             <button class="btn" id="lb-toggle" style="width:100%">Show Full List</button>
         </div>
 
         <div id="search-box" class="interactive">
-            <input type="text" id="search-input" placeholder="Search word...">
-            <button class="btn" id="search-btn">GO</button>
+            <input type="text" id="search-input" placeholder="Cerca parola...">
+            <button class="btn" id="search-go">GO</button>
         </div>
 
-        <button class="btn interactive" id="zoomToggle">Toggle View</button>
+        <button class="btn interactive" id="toggle-view">Toggle View</button>
     </div>
 
     <div id="container"></div>
 
     <script type="x-shader/x-vertex" id="vertexshader">
+        attribute vec3 instanceColor;
+        attribute float instanceSeed;
         varying vec2 vUv;
+        varying vec3 vColor;
+        varying float vSeed;
+
         void main() {
             vUv = uv;
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            vColor = instanceColor;
+            vSeed = instanceSeed;
+            // Standard projection for InstancedMesh
+            gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
         }
     </script>
 
     <script type="x-shader/x-fragment" id="fragmentshader">
         varying vec2 vUv;
-        uniform vec3 uColor;
-        uniform float uSeed;
+        varying vec3 vColor;
+        varying float vSeed;
 
         float random(vec2 st) {
             return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
@@ -81,94 +93,88 @@
             float dist = length(pos);
             float angle = atan(pos.y, pos.x);
 
-            float spikes = sin(angle * (8.0 + mod(uSeed, 4.0)) + uSeed) * 0.03;
-            float burst = sin(angle * (12.0 + mod(uSeed, 8.0)) - uSeed) * 0.015;
+            float spikes = sin(angle * (8.0 + mod(vSeed, 4.0)) + vSeed) * 0.03;
+            float burst = sin(angle * (12.0 + mod(vSeed, 8.0)) - vSeed) * 0.015;
             float shapeMask = 1.0 - smoothstep(0.41 + spikes + burst, 0.42 + spikes + burst, dist);
 
             vec2 screenCoord = gl_FragCoord.xy;
             float staticGrain = (random(screenCoord * 0.5) - 0.5) * 0.14;
 
-            vec3 gradColor = mix(uColor * 1.15, uColor * 0.85, dist * 1.5);
+            vec3 gradColor = mix(vColor * 1.15, vColor * 0.85, dist * 1.5);
             gl_FragColor = vec4(gradColor + staticGrain, shapeMask);
+            if(gl_FragColor.a < 0.1) discard; 
         }
     </script>
 
     <script type="module">
         import * as THREE from 'three';
 
-        const text = "sistema dinamica risposta frequenza stabilità controllo feedback guadagno polo zero smorzamento oscillazione transitorio regime errore algoritmo funzione variabile vettore matrice sensore attuatore segnale filtro rumore analisi progetto sintesi modello simulazione tempo ampiezza fase margine stabilità asintotica sovraelongazione assestamento linearizzazione equilibrio stocastico deterministico campionamento quantizzazione digitale analogico microcontrollore automazione robotica intelligenza convoluzione trasformata laplace fourier z-transform spazio stati osservabilità raggiungibilità compensatore regolatore pid proporzionale integrale derivativo saturazione isteresi ritardo predizione stima filtro kalman identificazione minimi quadrati ottimizzazione vincolo obiettivo costo energia potenza efficienza affidabilità resilienza robustezza incertezza disturbo sensibilità banda passante risonanza picco smorzato naturale forzata libera eccitazione ingresso uscita stato retroazione unità gradino rampa impulso parabolico traiettoria inseguimento riferimento setpoint errore inseguimento precisione accuratezza risoluzione campionatore mantenitore ordine zero primo ricostruzione segnale aliasing nyquist shannon teorema campionamento stabilità ingresso-uscita bibo lyapunov energia dissipativa passività causalità invarianza temporale tempo-variante non lineare caotico frattale rete neurale apprendimento supervisionato rinforzo profondo regressione classificazione clusterizzazione neurone sinapsi peso bias attivazione gradiente backpropagation epoca batch loss optimizer adam sgd dropout normalizzazione regolarizzazione overfitting underfitting validazione cross-validation test set training set iperparametro architettura layer convoluzionale ricorrente trasformatore attenzione encoder decoder sequenza linguaggio naturale visione artificiale elaborazione immagini segmentazione detezione oggetti tracciamento realtà aumentata virtuale mista interfaccia uomo-macchina usabilità accessibilità prototipo sviluppo agile scrum kanban sprint backlog user story testing unitario integrazione sistema accettazione deploy pipeline ci-cd docker kubernetes cloud serverless microservizi api rest graphql database sql nosql transazione acid cap teorema sharding replicazione consistenza disponibilità partizionamento sicurezza crittografia autenticazione autorizzazione token jwt oauth2 ssl tls firewall malware phishing attacco ddos vulnerabilità patch aggiornamento manutenzione documentazione commento codice pulito refactoring debito tecnico architettura esagonale clean architecture solid principi design pattern singleton factory observer strategy decorator adapter proxy bridge facade memento state command iterator visitor template method chain of responsibility mediator flyweight interpreter";
-        const baseWords = text.split(" ");
-        const values = Array.from({ length: 750 }, (_, i) => `${baseWords[i % baseWords.length]}_${i + 1}`);
-
-        class Blob {
-            constructor(id, word, x, y, radius, hue, scene, geo, matBase) {
-                this.word = word;
-                this.pos = new THREE.Vector2(x, y);
-                this.vel = new THREE.Vector2(0, 0);
-                this.radius = radius;
-                this.targetRadius = radius;
-                
-                this.material = matBase.clone();
-                this.material.uniforms.uColor.value.setHSL(hue/360, 0.6, 0.55);
-                this.material.uniforms.uSeed.value = Math.random() * 100;
-
-                this.mesh = new THREE.Mesh(geo, this.material);
-                this.mesh.userData.parent = this;
-                scene.add(this.mesh);
-            }
-            update(fric, vW, vH) {
-                this.radius += (this.targetRadius - this.radius) * 0.1;
-                this.pos.add(this.vel);
-                this.vel.multiplyScalar(fric);
-                // Borders
-                const m = this.radius * 0.8;
-                if (this.pos.x < -vW/2 + m) this.vel.x += 0.5;
-                if (this.pos.x >  vW/2 - m) this.vel.x -= 0.5;
-                if (this.pos.y < -vH/2 + m) this.vel.y += 0.5;
-                if (this.pos.y >  vH/2 - m) this.vel.y -= 0.5;
-            }
-            pop() { this.targetRadius = Math.random() > 0.5 ? Math.min(this.targetRadius + 20, 100) : Math.max(this.targetRadius - 20, 15); }
-        }
+        const textStr = "sistema dinamica risposta frequenza stabilità controllo feedback guadagno polo zero smorzamento oscillazione transitorio regime errore algoritmo funzione variabile vettore matrice sensore attuatore segnale filtro rumore analisi progetto sintesi modello simulazione tempo ampiezza fase margine stabilità asintotica sovraelongazione assestamento linearizzazione equilibrio stocastico deterministico campionamento quantizzazione digitale analogico microcontrollore automazione robotica intelligenza convoluzione trasformata laplace fourier z-transform spazio stati osservabilità raggiungibilità compensatore regolatore pid proporzionale integrale derivativo saturazione isteresi ritardo predizione stima filtro kalman identificazione minimi quadrati ottimizzazione vincolo obiettivo costo energia potenza efficienza affidabilità resilienza robustezza incertezza disturbo sensibilità banda passante risonanza picco smorzato naturale forzata libera eccitazione ingresso uscita stato retroazione unità gradino rampa impulso parabolico traiettoria inseguimento riferimento setpoint errore inseguimento precisione accuratezza risoluzione campionatore mantenitore ordine zero primo ricostruzione segnale aliasing nyquist shannon teorema campionamento stabilità ingresso-uscita bibo lyapunov energia dissipativa passività causalità invarianza temporale tempo-variante non lineare caotico frattale rete neurale apprendimento supervisionato rinforzo profondo regressione classificazione clusterizzazione neurone sinapsi peso bias attivazione gradiente backpropagation epoca batch loss optimizer adam sgd dropout normalizzazione regolarizzazione overfitting underfitting validazione cross-validation test set training set iperparametro architettura layer convoluzionale ricorrente trasformatore attenzione encoder decoder sequenza linguaggio naturale visione artificiale elaborazione immagini segmentazione detezione oggetti tracciamento realtà aumentata virtuale mista interfaccia uomo-macchina usabilità accessibilità prototipo sviluppo agile scrum kanban sprint backlog user story testing unitario integrazione sistema accettazione deploy pipeline ci-cd docker kubernetes cloud serverless microservizi api rest graphql database sql nosql transazione acid cap teorema sharding replicazione consistenza disponibilità partizionamento sicurezza crittografia autenticazione autorizzazione token jwt oauth2 ssl tls firewall malware phishing attacco ddos vulnerabilità patch aggiornamento manutenzione documentazione commento codice pulito refactoring debito tecnico architettura esagonale clean architecture solid principi design pattern singleton factory observer strategy decorator adapter proxy bridge facade memento state command iterator visitor template method chain of responsibility mediator flyweight interpreter";
+        const baseWords = textStr.split(" ");
+        const words = Array.from({ length: 750 }, (_, i) => `${baseWords[i % baseWords.length]}_${i + 1}`);
 
         class App {
             constructor() {
+                this.count = 750;
+                this.zoom = { current: 500, target: 500 };
+                this.offset = new THREE.Vector2(0, 0);
+                this.blobs = [];
+                this.lbFull = false;
+
+                this.initGraphics();
+                this.initBlobs();
+                this.initUI();
+                this.animate();
+            }
+
+            initGraphics() {
                 this.scene = new THREE.Scene();
                 this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 1000);
                 this.camera.position.z = 10;
                 this.renderer = new THREE.WebGLRenderer({ antialias: true });
                 this.renderer.setSize(window.innerWidth, window.innerHeight);
+                this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
                 document.getElementById('container').appendChild(this.renderer.domElement);
-
-                this.zoom = { current: 500, target: 500 };
-                this.offset = new THREE.Vector2(0, 0);
-                this.blobs = [];
-                this.isPanning = false;
-                this.lbFull = false;
-
-                this.init();
-                this.bind();
-                this.animate();
             }
 
-            init() {
+            initBlobs() {
                 const geo = new THREE.PlaneGeometry(1, 1);
                 const mat = new THREE.ShaderMaterial({
-                    uniforms: { uColor: { value: new THREE.Color() }, uSeed: { value: 0 } },
                     vertexShader: document.getElementById('vertexshader').textContent,
                     fragmentShader: document.getElementById('fragmentshader').textContent,
-                    transparent: true, depthTest: false
+                    transparent: true,
                 });
 
-                const aspect = window.innerWidth / window.innerHeight;
-                for(let i=0; i<750; i++) {
-                    const x = (Math.random() - 0.5) * 1500;
-                    const y = (Math.random() - 0.5) * 1500;
-                    this.blobs.push(new Blob(i, values[i], x, y, 20, Math.random()*360, this.scene, geo, mat));
+                this.iMesh = new THREE.InstancedMesh(geo, mat, this.count);
+                
+                const colors = new Float32Array(this.count * 3);
+                const seeds = new Float32Array(this.count);
+                const tempColor = new THREE.Color();
+
+                for(let i=0; i<this.count; i++) {
+                    const radius = 18 + Math.random() * 5;
+                    this.blobs.push({
+                        id: i,
+                        word: words[i],
+                        pos: new THREE.Vector2((Math.random()-0.5)*1200, (Math.random()-0.5)*1200),
+                        vel: new THREE.Vector2(),
+                        radius: radius,
+                        targetRadius: radius,
+                        seed: Math.random() * 100
+                    });
+
+                    tempColor.setHSL(Math.random(), 0.6, 0.55);
+                    tempColor.toArray(colors, i * 3);
+                    seeds[i] = this.blobs[i].seed;
                 }
+
+                geo.setAttribute('instanceColor', new THREE.InstancedBufferAttribute(colors, 3));
+                geo.setAttribute('instanceSeed', new THREE.InstancedBufferAttribute(seeds, 1));
+                this.scene.add(this.iMesh);
             }
 
-            bind() {
-                document.getElementById('zoomToggle').onclick = () => {
+            initUI() {
+                document.getElementById('toggle-view').onclick = () => {
                     this.zoom.target = this.zoom.target === 500 ? 1400 : 500;
                     if(this.zoom.target === 500) this.offset.set(0,0);
                 };
@@ -176,70 +182,89 @@
                     this.lbFull = !this.lbFull;
                     document.getElementById('lb-toggle').innerText = this.lbFull ? "Show Top 10" : "Show Full List";
                 };
-                document.getElementById('search-btn').onclick = () => this.search();
-                
+                document.getElementById('search-go').onclick = () => this.search();
+
                 window.addEventListener('mousedown', (e) => {
                     if(e.target.closest('.interactive')) return;
-                    if(this.zoom.target > 600) this.isPanning = true;
                     this.checkClick(e);
                 });
-                window.addEventListener('mousemove', (e) => {
-                    if(this.isPanning) {
-                        this.offset.x -= e.movementX * (this.zoom.current / window.innerHeight);
-                        this.offset.y += e.movementY * (this.zoom.current / window.innerHeight);
-                    }
+                window.addEventListener('resize', () => {
+                    this.renderer.setSize(window.innerWidth, window.innerHeight);
                 });
-                window.addEventListener('mouseup', () => this.isPanning = false);
-                window.addEventListener('resize', () => this.renderer.setSize(window.innerWidth, window.innerHeight));
             }
 
             search() {
-                const val = document.getElementById('search-input').value.toLowerCase();
-                const b = this.blobs.find(x => x.word.toLowerCase().includes(val));
-                if(b) { this.offset.copy(b.pos); this.zoom.target = 500; b.pop(); }
+                const q = document.getElementById('search-input').value.toLowerCase();
+                const b = this.blobs.find(x => x.word.toLowerCase().includes(q));
+                if(b) { this.offset.copy(b.pos); this.zoom.target = 500; b.targetRadius = 80; }
             }
 
             checkClick(e) {
-                const ray = new THREE.Raycaster();
                 const mouse = new THREE.Vector2((e.clientX/window.innerWidth)*2-1, -(e.clientY/window.innerHeight)*2+1);
+                const ray = new THREE.Raycaster();
                 ray.setFromCamera(mouse, this.camera);
-                const hits = ray.intersectObjects(this.scene.children);
-                if(hits.length > 0) hits[0].object.userData.parent.pop();
+                const hits = ray.intersectObject(this.iMesh);
+                if(hits.length > 0) {
+                    const b = this.blobs[hits[0].instanceId];
+                    b.targetRadius = b.targetRadius > 50 ? 20 : 80;
+                }
             }
 
             animate() {
                 requestAnimationFrame(() => this.animate());
+                
                 this.zoom.current += (this.zoom.target - this.zoom.current) * 0.1;
                 const aspect = window.innerWidth / window.innerHeight;
-                
                 this.camera.left = -this.zoom.current * aspect / 2 + this.offset.x;
                 this.camera.right = this.zoom.current * aspect / 2 + this.offset.x;
                 this.camera.top = this.zoom.current / 2 + this.offset.y;
                 this.camera.bottom = -this.zoom.current / 2 + this.offset.y;
                 this.camera.updateProjectionMatrix();
 
-                // Physics (Optimized pass)
-                const vW = this.zoom.current * aspect * 2, vH = this.zoom.current * 2;
-                for(let i=0; i<750; i++) {
-                    const b1 = this.blobs[i];
-                    b1.update(0.14, vW, vH);
-                    for(let j=i+1; j<750; j++) {
+                const dummy = new THREE.Object3D();
+                const vW = this.zoom.current * aspect, vH = this.zoom.current;
+
+                for(let i=0; i<this.count; i++) {
+                    const b = this.blobs[i];
+                    
+                    // Physics
+                    b.pos.add(b.vel);
+                    b.vel.multiplyScalar(0.14);
+                    b.radius += (b.targetRadius - b.radius) * 0.1;
+
+                    // Borders
+                    const m = b.radius * 0.8;
+                    if(b.pos.x < -vW) b.vel.x += 1.5; if(b.pos.x > vW) b.vel.x -= 1.5;
+                    if(b.pos.y < -vH) b.vel.y += 1.5; if(b.pos.y > vH) b.vel.y -= 1.5;
+
+                    // Repulsion (Semplificata per stabilità)
+                    for(let j=i+1; j<this.count; j++) {
                         const b2 = this.blobs[j];
-                        const dx = b2.pos.x - b1.pos.x, dy = b2.pos.y - b1.pos.y;
-                        const d2 = dx*dx + dy*dy, min = b1.radius + b2.radius;
+                        const dx = b2.pos.x - b.pos.x, dy = b2.pos.y - b.pos.y;
+                        const d2 = dx*dx + dy*dy, min = b.radius + b2.radius;
                         if(d2 < min*min) {
                             const d = Math.sqrt(d2) || 1, overlap = (min - d) * 0.5;
                             const nx = dx/d, ny = dy/d;
-                            b1.vel.x -= nx * overlap; b1.vel.y -= ny * overlap;
+                            b.vel.x -= nx * overlap; b.vel.y -= ny * overlap;
                             b2.vel.x += nx * overlap; b2.vel.y += ny * overlap;
                         }
                     }
-                    b1.draw();
+
+                    dummy.position.set(b.pos.x, b.pos.y, 0);
+                    dummy.scale.set(b.radius * 2.6, b.radius * 2.6, 1);
+                    dummy.updateMatrix();
+                    this.iMesh.setMatrixAt(i, dummy.matrix);
                 }
 
+                this.iMesh.instanceMatrix.needsUpdate = true;
+
+                // UI Update (Throttled)
                 if(Math.floor(performance.now()) % 1000 < 20) {
                     const sorted = [...this.blobs].sort((a,b)=>b.radius-a.radius).slice(0, this.lbFull?50:10);
-                    document.getElementById('lb-content').innerHTML = sorted.map(x => `<div class="lb-item" onclick="window.app.offset.copy(this.pos)">${x.word} <span>${Math.round(x.radius)}</span></div>`).join('');
+                    document.getElementById('lb-content').innerHTML = sorted.map(x => `
+                        <div class="lb-item" onclick="window.app.offset.copy(window.app.blobs[${x.id}].pos)">
+                            ${x.word} <span>${Math.round(x.radius)}</span>
+                        </div>`).join('');
                 }
 
                 this.renderer.render(this.scene, this.camera);

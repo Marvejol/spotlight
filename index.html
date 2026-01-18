@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mosaic - Sincronizzato & Highlight</title>
+    <title>Mosaic Fuego - Precise Selection</title>
     <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
     <script type="importmap">
     {
@@ -29,7 +29,7 @@
         }
         #lb-content { max-height: 50vh; overflow-y: auto; margin: 10px 0; border-top: 1px solid #eee; }
         .lb-item { display: flex; justify-content: space-between; padding: 4px 0; cursor: pointer; }
-        .lb-item:hover { font-weight: bold; color: #2196F3; }
+        .lb-item:hover { font-weight: bold; color: #000; }
         .btn {
             background: white; color: black; border: none; padding: 10px 18px; 
             border-radius: 20px; cursor: pointer; font-weight: bold; font-size: 11px;
@@ -47,7 +47,7 @@
             <button class="btn" id="lb-toggle" style="width:100%; font-size: 9px;">Show Full List</button>
         </div>
         <div id="search-box" class="interactive">
-            <input type="text" id="search-input" placeholder="Cerca ID o Parola...">
+            <input type="text" id="search-input" placeholder="Cerca parola...">
             <button class="btn" id="search-go" style="padding: 5px 12px;">GO</button>
         </div>
         <button class="btn interactive" id="zoomToggle">Toggle View</button>
@@ -63,16 +63,36 @@
         varying vec2 vUv;
         uniform vec3 uColor;
         uniform float uSeed;
+        uniform float uSelected;
+        uniform float uTime;
+
         float random(vec2 st) { return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123); }
+
         void main() {
             vec2 pos = vUv - 0.5;
             float dist = length(pos);
             float angle = atan(pos.y, pos.x);
+
             float spikes = sin(angle * (8.0 + mod(uSeed, 4.0)) + uSeed) * 0.03;
             float burst = sin(angle * (12.0 + mod(uSeed, 8.0)) - uSeed) * 0.015;
-            float shapeMask = 1.0 - smoothstep(0.41 + spikes + burst, 0.42 + spikes + burst, dist);
-            float grain = (random(gl_FragCoord.xy * 0.5) - 0.5) * 0.14;
-            gl_FragColor = vec4(mix(uColor * 1.15, uColor * 0.85, dist * 1.5) + grain, shapeMask);
+            
+            float edgeDist = 0.41 + spikes + burst;
+            float shapeMask = 1.0 - smoothstep(edgeDist, edgeDist + 0.01, dist);
+            
+            vec2 screenCoord = gl_FragCoord.xy;
+            float staticGrain = (random(screenCoord * 0.5) - 0.5) * 0.14;
+            vec3 color = mix(uColor * 1.15, uColor * 0.85, dist * 1.5) + staticGrain;
+
+            // --- DOTTED LINE HIGHLIGHT ---
+            if(uSelected > 0.5) {
+                // Crea il pattern tratteggiato basato sull'angolo
+                float dots = step(0.5, sin(angle * 20.0 + uTime * 5.0));
+                // Individua solo il bordo estremo
+                float border = smoothstep(edgeDist - 0.015, edgeDist, dist) * (1.0 - smoothstep(edgeDist, edgeDist + 0.005, dist));
+                color = mix(color, vec3(1.0), border * dots);
+            }
+
+            gl_FragColor = vec4(color, shapeMask);
         }
     </script>
 
@@ -91,14 +111,23 @@
                 this.material = matBase.clone();
                 this.material.uniforms.uColor.value.setHSL(hue/360, 0.65, 0.55);
                 this.material.uniforms.uSeed.value = Math.random() * 100.0;
+                this.material.uniforms.uTime = { value: 0 };
+                this.material.uniforms.uSelected = { value: 0 };
+
                 this.mesh = new THREE.Mesh(geo, this.material);
                 this.mesh.userData.parent = this;
                 scene.add(this.mesh);
             }
-            update(fric, settle, vW, vH) {
+            setSelected(state) {
+                this.material.uniforms.uSelected.value = state ? 1 : 0;
+                this.mesh.renderOrder = state ? 1 : 0;
+            }
+            update(fric, settle, vW, vH, time) {
                 this.radius += (this.targetRadius - this.radius) * settle;
                 this.mass = this.radius * this.radius;
                 this.pos.add(this.vel); this.vel.multiplyScalar(fric);
+                this.material.uniforms.uTime.value = time;
+
                 const margin = this.radius * 0.8;
                 if (this.pos.x < -vW/2 + margin) this.vel.x += 0.25;
                 if (this.pos.x >  vW/2 - margin) this.vel.x -= 0.25;
@@ -106,7 +135,10 @@
                 if (this.pos.y >  vH/2 - margin) this.vel.y -= 0.25;
                 if (this.vel.lengthSq() < 0.0001) this.vel.set(0,0);
             }
-            pop() { this.targetRadius = Math.random() > 0.5 ? Math.min(this.targetRadius + 22, 110) : Math.max(this.targetRadius - 22, 10); }
+            pop() {
+                const dir = Math.random() > 0.5 ? 1 : -1;
+                this.targetRadius = THREE.MathUtils.clamp(this.targetRadius + (22 * dir), 10, 110);
+            }
             draw() { const d = this.radius * 2.6; this.mesh.scale.set(d, d, 1); this.mesh.position.set(this.pos.x, this.pos.y, 0); }
         }
 
@@ -115,9 +147,9 @@
                 this.config = { count: 750, friction: 0.14, repulsion: 0.65, settleSpeed: 0.8, zoomIn: 480, zoomOut: 1300 };
                 this.blobs = []; this.targetZoom = this.config.zoomIn; this.currentZoom = this.config.zoomIn;
                 this.cameraOffset = new THREE.Vector2(0, 0); this.isPanning = false; this.lbFull = false;
-                this.selectedBlobId = null;
+                this.selectedBlob = null;
 
-                this.initScene(); this.initBlobs(); this.initHighlight(); this.bindEvents(); this.animate();
+                this.initScene(); this.initBlobs(); this.bindEvents(); this.animate();
             }
 
             initScene() {
@@ -133,7 +165,7 @@
             initBlobs() {
                 const geo = new THREE.PlaneGeometry(1, 1);
                 const mat = new THREE.ShaderMaterial({
-                    uniforms: { uColor: { value: new THREE.Color() }, uSeed: { value: 0 } },
+                    uniforms: { uColor: { value: new THREE.Color() }, uSeed: { value: 0 }, uTime: { value: 0 }, uSelected: { value: 0 } },
                     vertexShader: document.getElementById('vertexshader').textContent,
                     fragmentShader: document.getElementById('fragmentshader').textContent,
                     transparent: true, depthTest: false
@@ -147,17 +179,6 @@
                     const y = (r - (this.config.count/cols)/2) * spacing + (Math.random()-0.5)*10;
                     this.blobs.push(new Blob(i, words[i], x, y, 18, Math.random() * 360, this.scene, geo, mat));
                 }
-            }
-
-            initHighlight() {
-                const curve = new THREE.EllipseCurve(0, 0, 1, 1, 0, 2 * Math.PI, false, 0);
-                const points = curve.getPoints(50);
-                const geometry = new THREE.BufferGeometry().setFromPoints(points);
-                const material = new THREE.LineDashedMaterial({ color: 0xffffff, dashSize: 0.1, gapSize: 0.1 });
-                this.highlightLine = new THREE.Line(geometry, material);
-                this.highlightLine.computeLineDistances();
-                this.highlightLine.visible = false;
-                this.scene.add(this.highlightLine);
             }
 
             bindEvents() {
@@ -179,11 +200,13 @@
 
             selectBlob(blob) {
                 if(!blob) return;
-                this.selectedBlobId = blob.id;
+                // Reset precedente selezione
+                if(this.selectedBlob) this.selectedBlob.setSelected(false);
+                
+                this.selectedBlob = blob;
+                this.selectedBlob.setSelected(true);
                 this.cameraOffset.copy(blob.pos);
-                this.targetZoom = this.config.zoomIn;
-                blob.pop();
-                this.highlightLine.visible = true;
+                // Niente cambio zoom o pop raggio qui come richiesto
             }
 
             search() {
@@ -201,9 +224,12 @@
                 const ray = new THREE.Raycaster();
                 ray.setFromCamera(mouse, this.camera);
                 const hits = ray.intersectObjects(this.scene.children);
-                if(hits.length > 0 && hits[0].object !== this.highlightLine) {
-                    const b = hits[0].object.userData.parent;
-                    this.selectBlob(b);
+                if(hits.length > 0) {
+                    this.selectBlob(hits[0].object.userData.parent);
+                } else {
+                    // Deseleziona se clicchi sul vuoto
+                    if(this.selectedBlob) this.selectedBlob.setSelected(false);
+                    this.selectedBlob = null;
                 }
             }
 
@@ -237,7 +263,7 @@
                 const list = this.lbFull ? sorted.slice(0, 50) : sorted.slice(0, 10);
                 document.getElementById('lb-content').innerHTML = list.map((b) => `
                     <div class="lb-item" onclick="window.app.selectBlob(window.app.blobs[${b.id}])">
-                        <span>${b.word.split('_')[0]}</span>
+                        <span style="${this.selectedBlob?.id === b.id ? 'font-weight:bold; color:#2196F3;' : ''}">${b.word.split('_')[0]}</span>
                         <span style="opacity:0.5">${Math.round(b.radius)}</span>
                     </div>
                 `).join('');
@@ -245,6 +271,7 @@
 
             animate() {
                 requestAnimationFrame(() => this.animate());
+                const time = performance.now() * 0.001;
                 this.currentZoom += (this.targetZoom - this.currentZoom) * 0.08;
                 const aspect = window.innerWidth / window.innerHeight;
                 const vW = this.currentZoom * aspect, vH = this.currentZoom;
@@ -252,16 +279,9 @@
                 this.camera.top = vH/2 + this.cameraOffset.y; this.camera.bottom = -vH/2 + this.cameraOffset.y;
                 this.camera.updateProjectionMatrix();
 
-                this.blobs.forEach(b => b.update(this.config.friction, this.config.settleSpeed, vW, vH));
+                this.blobs.forEach(b => b.update(this.config.friction, this.config.settleSpeed, vW, vH, time));
                 this.resolvePhysics();
                 this.blobs.forEach(b => b.draw());
-
-                if(this.selectedBlobId !== null) {
-                    const b = this.blobs[this.selectedBlobId];
-                    const s = b.radius * 3.5 + Math.sin(performance.now()*0.01)*5;
-                    this.highlightLine.position.set(b.pos.x, b.pos.y, 0.1);
-                    this.highlightLine.scale.set(s, s, 1);
-                }
 
                 if(Math.random() < 0.01) this.blobs[Math.floor(Math.random()*750)].pop();
                 if(Math.floor(performance.now() / 1000) % 2 === 0) this.updateUI();

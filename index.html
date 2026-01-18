@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mosaic Fuego - Exponential Selection</title>
+    <title>Mosaic Fuego - Restoring Exponential</title>
     <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
     <script type="importmap">
     {
@@ -103,9 +103,12 @@
         class Blob {
             constructor(id, word, x, y, radius, hue, scene, geo, matBase) {
                 this.id = id; this.word = word; this.pos = new THREE.Vector2(x, y);
-                this.vel = new THREE.Vector2(0, 0); this.radius = radius; this.targetRadius = radius;
+                this.vel = new THREE.Vector2(0, 0); 
+                this.baseRadius = radius; // 18
+                this.radius = radius; 
+                this.targetRadius = radius;
                 this.mass = radius * radius;
-                this.growthFactor = 1.0; // New: Exponential decay starts at 1
+                
                 this.material = matBase.clone();
                 this.material.uniforms.uColor.value.setHSL(hue/360, 0.65, 0.55);
                 this.material.uniforms.uSeed.value = Math.random() * 100.0;
@@ -134,23 +137,32 @@
                 if (this.vel.lengthSq() < 0.0001) this.vel.set(0,0);
             }
             pop() {
-                // Logic: Change is multiplied by growthFactor, then factor is halved (exponential decay)
-                const baseChange = Math.random() * 80 + 20; 
+                // Calculate how far we are from the base size
+                const deviation = Math.abs(this.targetRadius - this.baseRadius);
+                
+                // Exponentially dampen the change based on distance from base
+                // The further away, the smaller the possible 'jump'
+                const dampening = Math.exp(-deviation * 0.04); 
+                
+                const rawChange = (Math.random() * 60 + 20) * dampening;
                 const dir = Math.random() > 0.5 ? 1 : -1;
                 
-                this.targetRadius = THREE.MathUtils.clamp(this.targetRadius + (baseChange * this.growthFactor * dir), 10, 160);
+                // If extremely large/small, bias the direction back to center
+                let finalDir = dir;
+                if (this.targetRadius > 100) finalDir = -1;
+                if (this.targetRadius < 10) finalDir = 1;
+
+                this.targetRadius += rawChange * finalDir;
                 
-                this.growthFactor *= 0.5; // Exponential reduction
-                
-                // Periodically reset factor so they don't stop forever
-                if(this.growthFactor < 0.01 && Math.random() < 0.05) this.growthFactor = 1.0;
+                // Hard boundaries
+                this.targetRadius = THREE.MathUtils.clamp(this.targetRadius, 5, 180);
             }
             draw() { const d = this.radius * 2.6; this.mesh.scale.set(d, d, 1); this.mesh.position.set(this.pos.x, this.pos.y, 0); }
         }
 
         class App {
             constructor() {
-                this.config = { count: 750, friction: 0.14, repulsion: 0.65, settleSpeed: 0.8, zoomIn: 480, zoomOut: 1300 };
+                this.config = { count: 750, friction: 0.14, repulsion: 0.65, settleSpeed: 0.1, zoomIn: 480, zoomOut: 1300 };
                 this.blobs = []; this.targetZoom = this.config.zoomIn; this.currentZoom = this.config.zoomIn;
                 this.cameraOffset = new THREE.Vector2(0, 0); this.isPanning = false; this.lbFull = false;
                 this.selectedBlob = null;
@@ -285,8 +297,8 @@
                 this.resolvePhysics();
                 this.blobs.forEach(b => b.draw());
 
-                // Trigger 2 random pops every frame to keep the field dynamic
-                for(let k = 0; k < 2; k++) {
+                // Constantly popping blobs
+                for(let k = 0; k < 4; k++) {
                     this.blobs[Math.floor(Math.random() * this.config.count)].pop();
                 }
 

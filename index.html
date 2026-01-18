@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Snappy Mosaic Pro - Search & Leaderboard</title>
+    <title>Snappy Mosaic - Fixed & Fast</title>
     <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
     <script type="importmap">
     {
@@ -13,77 +13,47 @@
     }
     </script>
     <style>
-        :root {
-            --ui-bg: rgba(255, 255, 255, 0.95);
-            --accent: #2196F3;
-            --text-main: #111;
-        }
-        body { margin: 0; overflow: hidden; background-color: #000; cursor: crosshair; font-family: 'Segoe UI', Roboto, sans-serif; }
-        canvas { display: block; }
-
-        #ui-layer { position: fixed; inset: 0; pointer-events: none; z-index: 10; padding: 20px; display: flex; flex-direction: column; gap: 20px; }
+        body { margin: 0; overflow: hidden; background-color: #000; cursor: crosshair; font-family: sans-serif; }
+        #ui-layer { position: fixed; inset: 0; pointer-events: none; z-index: 10; padding: 20px; color: black; }
         .interactive { pointer-events: auto; }
-
-        /* Search Bar */
-        #search-container {
-            align-self: center;
-            display: flex; gap: 8px; background: var(--ui-bg);
-            padding: 8px 15px; border-radius: 40px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.4);
-        }
-        #search-input {
-            border: none; background: transparent; outline: none;
-            width: 250px; font-size: 14px; font-weight: 500;
-        }
-
-        /* Leaderboard */
-        #leaderboard {
-            width: 240px; background: var(--ui-bg); color: var(--text-main);
-            border-radius: 15px; padding: 18px; 
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-            font-size: 13px; display: flex; flex-direction: column;
-        }
-        #leaderboard h3 { margin: 0 0 12px 0; font-size: 15px; text-transform: uppercase; letter-spacing: 1px; border-bottom: 2px solid #eee; padding-bottom: 5px; }
-        #lb-content { overflow-y: auto; max-height: 60vh; margin-bottom: 10px; }
-        .lb-item { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #f5f5f5; cursor: pointer; border-radius: 4px; transition: background 0.2s; }
-        .lb-item:hover { background: #f0f8ff; padding-left: 5px; }
-        .lb-name { font-weight: 600; color: #333; }
-        .lb-val { font-family: monospace; color: #666; }
         
-        #lb-toggle {
-            background: none; border: 1px solid #ddd; color: #555;
-            padding: 5px; border-radius: 6px; cursor: pointer; font-size: 11px;
-            font-weight: bold; text-transform: uppercase;
+        #search-box {
+            position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 5px; background: rgba(255,255,255,0.9); padding: 8px 15px; border-radius: 30px;
         }
+        #search-input { border: none; outline: none; background: transparent; width: 200px; }
 
-        #top-right-ui { position: absolute; top: 20px; right: 20px; display: flex; gap: 10px; }
+        #leaderboard {
+            position: absolute; top: 20px; left: 20px; width: 200px;
+            background: rgba(255,255,255,0.9); padding: 15px; border-radius: 12px; font-size: 12px;
+        }
+        #lb-content { max-height: 200px; overflow: hidden; margin-bottom: 10px; }
+        .lb-item { display: flex; justify-content: space-between; margin-bottom: 3px; cursor: pointer; }
+        .lb-item:hover { font-weight: bold; }
 
         .btn {
-            background: white; color: black; border: none; padding: 10px 22px; 
-            border-radius: 30px; cursor: pointer; font-weight: bold; 
-            font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.5); transition: 0.2s;
+            background: white; color: black; border: 1px solid #ccc; padding: 8px 15px; 
+            border-radius: 20px; cursor: pointer; font-weight: bold; font-size: 10px;
+            text-transform: uppercase; box-shadow: 0 4px 10px rgba(0,0,0,0.2);
         }
-        .btn:hover { background: #eee; transform: translateY(-2px); }
+        #zoomToggle { position: absolute; top: 20px; right: 20px; }
     </style>
 </head>
 <body>
 
     <div id="ui-layer">
-        <div id="search-container" class="interactive">
-            <input type="text" id="search-input" placeholder="Search a keyword (es. sistema)...">
-            <button class="btn" style="padding: 8px 15px; box-shadow: none;" id="search-btn">GO</button>
-        </div>
-
         <div id="leaderboard" class="interactive">
-            <h3>Top Blobs</h3>
+            <b style="display:block; margin-bottom:10px; border-bottom:1px solid #ddd">TOP BLOBS</b>
             <div id="lb-content"></div>
-            <button id="lb-toggle">Show Full List</button>
+            <button class="btn" id="lb-toggle" style="width:100%">Show Full List</button>
         </div>
 
-        <div id="top-right-ui" class="interactive">
-            <button class="btn" id="zoomToggle">Toggle View</button>
+        <div id="search-box" class="interactive">
+            <input type="text" id="search-input" placeholder="Search word...">
+            <button class="btn" id="search-btn">GO</button>
         </div>
+
+        <button class="btn interactive" id="zoomToggle">Toggle View</button>
     </div>
 
     <div id="container"></div>
@@ -126,206 +96,157 @@
     <script type="module">
         import * as THREE from 'three';
 
-        // --- DATA ---
         const text = "sistema dinamica risposta frequenza stabilità controllo feedback guadagno polo zero smorzamento oscillazione transitorio regime errore algoritmo funzione variabile vettore matrice sensore attuatore segnale filtro rumore analisi progetto sintesi modello simulazione tempo ampiezza fase margine stabilità asintotica sovraelongazione assestamento linearizzazione equilibrio stocastico deterministico campionamento quantizzazione digitale analogico microcontrollore automazione robotica intelligenza convoluzione trasformata laplace fourier z-transform spazio stati osservabilità raggiungibilità compensatore regolatore pid proporzionale integrale derivativo saturazione isteresi ritardo predizione stima filtro kalman identificazione minimi quadrati ottimizzazione vincolo obiettivo costo energia potenza efficienza affidabilità resilienza robustezza incertezza disturbo sensibilità banda passante risonanza picco smorzato naturale forzata libera eccitazione ingresso uscita stato retroazione unità gradino rampa impulso parabolico traiettoria inseguimento riferimento setpoint errore inseguimento precisione accuratezza risoluzione campionatore mantenitore ordine zero primo ricostruzione segnale aliasing nyquist shannon teorema campionamento stabilità ingresso-uscita bibo lyapunov energia dissipativa passività causalità invarianza temporale tempo-variante non lineare caotico frattale rete neurale apprendimento supervisionato rinforzo profondo regressione classificazione clusterizzazione neurone sinapsi peso bias attivazione gradiente backpropagation epoca batch loss optimizer adam sgd dropout normalizzazione regolarizzazione overfitting underfitting validazione cross-validation test set training set iperparametro architettura layer convoluzionale ricorrente trasformatore attenzione encoder decoder sequenza linguaggio naturale visione artificiale elaborazione immagini segmentazione detezione oggetti tracciamento realtà aumentata virtuale mista interfaccia uomo-macchina usabilità accessibilità prototipo sviluppo agile scrum kanban sprint backlog user story testing unitario integrazione sistema accettazione deploy pipeline ci-cd docker kubernetes cloud serverless microservizi api rest graphql database sql nosql transazione acid cap teorema sharding replicazione consistenza disponibilità partizionamento sicurezza crittografia autenticazione autorizzazione token jwt oauth2 ssl tls firewall malware phishing attacco ddos vulnerabilità patch aggiornamento manutenzione documentazione commento codice pulito refactoring debito tecnico architettura esagonale clean architecture solid principi design pattern singleton factory observer strategy decorator adapter proxy bridge facade memento state command iterator visitor template method chain of responsibility mediator flyweight interpreter";
         const baseWords = text.split(" ");
         const values = Array.from({ length: 750 }, (_, i) => `${baseWords[i % baseWords.length]}_${i + 1}`);
 
         class Blob {
-            constructor(id, word, x, y, radius, hue, scene, geometry, materialBase) {
-                this.id = id;
+            constructor(id, word, x, y, radius, hue, scene, geo, matBase) {
                 this.word = word;
                 this.pos = new THREE.Vector2(x, y);
                 this.vel = new THREE.Vector2(0, 0);
                 this.radius = radius;
                 this.targetRadius = radius;
-                this.mass = radius * radius;
-
-                this.material = materialBase.clone();
-                this.material.uniforms.uColor.value = new THREE.Color(`hsl(${hue}, 65%, 55%)`);
+                
+                this.material = matBase.clone();
+                this.material.uniforms.uColor.value.setHSL(hue/360, 0.6, 0.55);
                 this.material.uniforms.uSeed.value = Math.random() * 100;
 
-                this.mesh = new THREE.Mesh(geometry, this.material);
-                this.mesh.userData = { parent: this };
+                this.mesh = new THREE.Mesh(geo, this.material);
+                this.mesh.userData.parent = this;
                 scene.add(this.mesh);
             }
-
-            update(friction, vW, vH) {
-                this.radius += (this.targetRadius - this.radius) * 0.8;
-                this.mass = this.radius * this.radius;
+            update(fric, vW, vH) {
+                this.radius += (this.targetRadius - this.radius) * 0.1;
                 this.pos.add(this.vel);
-                this.vel.multiplyScalar(friction);
-
-                const margin = this.radius * 0.8;
-                if (this.pos.x < -vW/2 + margin) this.vel.x += 0.3;
-                if (this.pos.x >  vW/2 - margin) this.vel.x -= 0.3;
-                if (this.pos.y < -vH/2 + margin) this.vel.y += 0.3;
-                if (this.pos.y >  vH/2 - margin) this.vel.y -= 0.3;
+                this.vel.multiplyScalar(fric);
+                // Borders
+                const m = this.radius * 0.8;
+                if (this.pos.x < -vW/2 + m) this.vel.x += 0.5;
+                if (this.pos.x >  vW/2 - m) this.vel.x -= 0.5;
+                if (this.pos.y < -vH/2 + m) this.vel.y += 0.5;
+                if (this.pos.y >  vH/2 - m) this.vel.y -= 0.5;
             }
-
-            pop() {
-                const dir = Math.random() > 0.5 ? 1 : -1;
-                this.targetRadius = THREE.MathUtils.clamp(this.targetRadius + (22 * dir), 10, 110);
-            }
-
-            draw() {
-                const s = this.radius * 2.6;
-                this.mesh.scale.set(s, s, 1);
-                this.mesh.position.set(this.pos.x, this.pos.y, 0);
-            }
+            pop() { this.targetRadius = Math.random() > 0.5 ? Math.min(this.targetRadius + 20, 100) : Math.max(this.targetRadius - 20, 15); }
         }
 
-        class MosaicApp {
+        class App {
             constructor() {
-                this.config = { zoomIn: 480, zoomOut: 1300, friction: 0.14 };
-                this.targetZoom = this.config.zoomIn;
-                this.currentZoom = this.config.zoomIn;
-                this.cameraOffset = new THREE.Vector2(0, 0);
-                this.isPanning = false;
-                this.lbFull = false;
-                
-                this.initApp();
-            }
-
-            initApp() {
                 this.scene = new THREE.Scene();
-                this.camera = new THREE.OrthographicCamera();
+                this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 1000);
+                this.camera.position.z = 10;
                 this.renderer = new THREE.WebGLRenderer({ antialias: true });
                 this.renderer.setSize(window.innerWidth, window.innerHeight);
-                this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
                 document.getElementById('container').appendChild(this.renderer.domElement);
 
-                const planeGeo = new THREE.PlaneGeometry(1, 1);
-                const blobMat = new THREE.ShaderMaterial({
+                this.zoom = { current: 500, target: 500 };
+                this.offset = new THREE.Vector2(0, 0);
+                this.blobs = [];
+                this.isPanning = false;
+                this.lbFull = false;
+
+                this.init();
+                this.bind();
+                this.animate();
+            }
+
+            init() {
+                const geo = new THREE.PlaneGeometry(1, 1);
+                const mat = new THREE.ShaderMaterial({
                     uniforms: { uColor: { value: new THREE.Color() }, uSeed: { value: 0 } },
                     vertexShader: document.getElementById('vertexshader').textContent,
                     fragmentShader: document.getElementById('fragmentshader').textContent,
                     transparent: true, depthTest: false
                 });
 
-                this.blobs = [];
                 const aspect = window.innerWidth / window.innerHeight;
-                const cols = Math.floor(Math.sqrt(750 * aspect));
-                const spacing = (this.config.zoomOut * aspect) / cols;
-
-                values.forEach((word, i) => {
-                    const r = Math.floor(i / cols);
-                    const c = i % cols;
-                    const x = (c - cols/2) * spacing;
-                    const y = (r - (750/cols)/2) * spacing;
-                    this.blobs.push(new Blob(i, word, x, y, 18, Math.random() * 360, this.scene, planeGeo, blobMat));
-                });
-
-                this.raycaster = new THREE.Raycaster();
-                this.setupUI();
-                this.animate();
+                for(let i=0; i<750; i++) {
+                    const x = (Math.random() - 0.5) * 1500;
+                    const y = (Math.random() - 0.5) * 1500;
+                    this.blobs.push(new Blob(i, values[i], x, y, 20, Math.random()*360, this.scene, geo, mat));
+                }
             }
 
-            setupUI() {
+            bind() {
                 document.getElementById('zoomToggle').onclick = () => {
-                    this.targetZoom = (this.targetZoom === this.config.zoomIn) ? this.config.zoomOut : this.config.zoomIn;
-                    if(this.targetZoom === this.config.zoomIn) this.cameraOffset.set(0,0);
+                    this.zoom.target = this.zoom.target === 500 ? 1400 : 500;
+                    if(this.zoom.target === 500) this.offset.set(0,0);
                 };
-
                 document.getElementById('lb-toggle').onclick = () => {
                     this.lbFull = !this.lbFull;
                     document.getElementById('lb-toggle').innerText = this.lbFull ? "Show Top 10" : "Show Full List";
                 };
-
-                const searchInput = document.getElementById('search-input');
-                const runSearch = () => this.zoomToWord(searchInput.value);
-                document.getElementById('search-btn').onclick = runSearch;
-                searchInput.onkeydown = (e) => { if(e.key === "Enter") runSearch(); };
-
-                window.addEventListener('mousedown', (e) => this.onMousedown(e));
-                window.addEventListener('mousemove', (e) => this.onMousemove(e));
-                window.addEventListener('mouseup', () => this.isPanning = false);
-            }
-
-            zoomToWord(query) {
-                if(!query) return;
-                const target = this.blobs.find(b => b.word.toLowerCase().includes(query.toLowerCase()));
-                if(target) {
-                    this.targetZoom = this.config.zoomIn;
-                    this.cameraOffset.copy(target.pos);
-                    target.pop(); // Feedback visivo
-                }
-            }
-
-            onMousedown(e) {
-                if (e.target.closest('.interactive')) return;
-                if (this.targetZoom === this.config.zoomOut) {
-                    this.isPanning = true;
-                    this.prevMouse = { x: e.clientX, y: e.clientY };
-                }
-                const mouse = new THREE.Vector2((e.clientX/window.innerWidth)*2-1, -(e.clientY/window.innerHeight)*2+1);
-                this.raycaster.setFromCamera(mouse, this.camera);
-                const hits = this.raycaster.intersectObjects(this.scene.children);
-                if(hits.length > 0) hits[0].object.userData.parent.pop();
-            }
-
-            onMousemove(e) {
-                if (this.isPanning && this.targetZoom === this.config.zoomOut) {
-                    const scalar = this.currentZoom / window.innerHeight;
-                    this.cameraOffset.x -= (e.clientX - this.prevMouse.x) * scalar;
-                    this.cameraOffset.y += (e.clientY - this.prevMouse.y) * scalar;
-                    this.prevMouse = { x: e.clientX, y: e.clientY };
-                }
-            }
-
-            updateUI() {
-                const sorted = [...this.blobs].sort((a,b) => b.radius - a.radius);
-                const list = this.lbFull ? sorted.slice(0, 50) : sorted.slice(0, 10);
+                document.getElementById('search-btn').onclick = () => this.search();
                 
-                document.getElementById('lb-content').innerHTML = list.map((b, i) => `
-                    <div class="lb-item" onclick="document.dispatchEvent(new CustomEvent('search-blob', {detail: '${b.word}'}))">
-                        <span class="lb-name">${i+1}. ${b.word}</span>
-                        <span class="lb-val">${Math.round(b.radius)}</span>
-                    </div>
-                `).join('');
+                window.addEventListener('mousedown', (e) => {
+                    if(e.target.closest('.interactive')) return;
+                    if(this.zoom.target > 600) this.isPanning = true;
+                    this.checkClick(e);
+                });
+                window.addEventListener('mousemove', (e) => {
+                    if(this.isPanning) {
+                        this.offset.x -= e.movementX * (this.zoom.current / window.innerHeight);
+                        this.offset.y += e.movementY * (this.zoom.current / window.innerHeight);
+                    }
+                });
+                window.addEventListener('mouseup', () => this.isPanning = false);
+                window.addEventListener('resize', () => this.renderer.setSize(window.innerWidth, window.innerHeight));
+            }
+
+            search() {
+                const val = document.getElementById('search-input').value.toLowerCase();
+                const b = this.blobs.find(x => x.word.toLowerCase().includes(val));
+                if(b) { this.offset.copy(b.pos); this.zoom.target = 500; b.pop(); }
+            }
+
+            checkClick(e) {
+                const ray = new THREE.Raycaster();
+                const mouse = new THREE.Vector2((e.clientX/window.innerWidth)*2-1, -(e.clientY/window.innerHeight)*2+1);
+                ray.setFromCamera(mouse, this.camera);
+                const hits = ray.intersectObjects(this.scene.children);
+                if(hits.length > 0) hits[0].object.userData.parent.pop();
             }
 
             animate() {
                 requestAnimationFrame(() => this.animate());
-                this.currentZoom += (this.targetZoom - this.currentZoom) * 0.08;
+                this.zoom.current += (this.zoom.target - this.zoom.current) * 0.1;
                 const aspect = window.innerWidth / window.innerHeight;
-                const vW = this.currentZoom * aspect, vH = this.currentZoom;
-
-                this.camera.left = -vW/2 + this.cameraOffset.x;
-                this.camera.right = vW/2 + this.cameraOffset.x;
-                this.camera.top = vH/2 + this.cameraOffset.y;
-                this.camera.bottom = -vH/2 + this.cameraOffset.y;
+                
+                this.camera.left = -this.zoom.current * aspect / 2 + this.offset.x;
+                this.camera.right = this.zoom.current * aspect / 2 + this.offset.x;
+                this.camera.top = this.zoom.current / 2 + this.offset.y;
+                this.camera.bottom = -this.zoom.current / 2 + this.offset.y;
                 this.camera.updateProjectionMatrix();
 
-                this.blobs.forEach(b => b.update(this.config.friction, vW*2, vH*2));
-                
-                // Physics
+                // Physics (Optimized pass)
+                const vW = this.zoom.current * aspect * 2, vH = this.zoom.current * 2;
                 for(let i=0; i<750; i++) {
                     const b1 = this.blobs[i];
+                    b1.update(0.14, vW, vH);
                     for(let j=i+1; j<750; j++) {
                         const b2 = this.blobs[j];
                         const dx = b2.pos.x - b1.pos.x, dy = b2.pos.y - b1.pos.y;
-                        const distSq = dx*dx + dy*dy, minD = b1.radius + b2.radius;
-                        if(distSq < minD*minD) {
-                            const dist = Math.sqrt(distSq) || 0.1, overlap = (minD - dist) * 0.65;
-                            const nx = dx/dist, ny = dy/dist, tm = b1.mass + b2.mass;
-                            b1.vel.x -= nx * overlap * (b2.mass/tm); b1.vel.y -= ny * overlap * (b2.mass/tm);
-                            b2.vel.x += nx * overlap * (b1.mass/tm); b2.vel.y += ny * overlap * (b1.mass/tm);
+                        const d2 = dx*dx + dy*dy, min = b1.radius + b2.radius;
+                        if(d2 < min*min) {
+                            const d = Math.sqrt(d2) || 1, overlap = (min - d) * 0.5;
+                            const nx = dx/d, ny = dy/d;
+                            b1.vel.x -= nx * overlap; b1.vel.y -= ny * overlap;
+                            b2.vel.x += nx * overlap; b2.vel.y += ny * overlap;
                         }
                     }
+                    b1.draw();
                 }
 
-                this.blobs.forEach(b => b.draw());
-                if(Math.random() < 0.01) this.blobs[Math.floor(Math.random()*750)].pop();
-                if(Math.floor(performance.now()) % 1000 < 20) this.updateUI();
+                if(Math.floor(performance.now()) % 1000 < 20) {
+                    const sorted = [...this.blobs].sort((a,b)=>b.radius-a.radius).slice(0, this.lbFull?50:10);
+                    document.getElementById('lb-content').innerHTML = sorted.map(x => `<div class="lb-item" onclick="window.app.offset.copy(this.pos)">${x.word} <span>${Math.round(x.radius)}</span></div>`).join('');
+                }
 
                 this.renderer.render(this.scene, this.camera);
             }
         }
 
-        const app = new MosaicApp();
-        // Listener per clic dalla leaderboard
-        document.addEventListener('search-blob', (e) => app.zoomToWord(e.detail));
+        window.app = new App();
     </script>
 </body>
 </html>

@@ -297,10 +297,10 @@
                 this.resolvePhysics();
                 this.blobs.forEach(b => b.draw());
 
-                // Constantly popping blobs
-                for(let k = 0; k < 4; k++) {
-                    this.blobs[Math.floor(Math.random() * this.config.count)].pop();
-                }
+                // Triggers roughly once every 2-3 frames (10x less than before)
+if(Math.random() < 0.4) {
+    this.blobs[Math.floor(Math.random() * this.config.count)].pop();
+}
 
                 if(Math.floor(performance.now() / 1000) % 2 === 0) this.updateUI();
                 this.renderer.render(this.scene, this.camera);

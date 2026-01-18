@@ -136,9 +136,15 @@
                 if (this.vel.lengthSq() < 0.0001) this.vel.set(0,0);
             }
             pop() {
-                const dir = Math.random() > 0.5 ? 1 : -1;
-                this.targetRadius = THREE.MathUtils.clamp(this.targetRadius + (22 * dir), 10, 110);
-            }
+    // Randomize the intensity of the size change
+    const changeAmount = Math.random() * 40 + 10; 
+    const direction = Math.random() > 0.4 ? 1 : -1; // 60% chance to grow, 40% to shrink
+    
+    this.targetRadius += (changeAmount * direction);
+    
+    // Clamp to keep them within visible/functional limits
+    this.targetRadius = THREE.MathUtils.clamp(this.targetRadius, 8, 150);
+}
             draw() { const d = this.radius * 2.6; this.mesh.scale.set(d, d, 1); this.mesh.position.set(this.pos.x, this.pos.y, 0); }
         }
 
@@ -283,7 +289,10 @@
                 this.resolvePhysics();
                 this.blobs.forEach(b => b.draw());
 
-                if(Math.random() < 0.01) this.blobs[Math.floor(Math.random()*750)].pop();
+                // Trigger 3 random blobs to change size every single frame
+for(let i = 0; i < 3; i++) {
+    this.blobs[Math.floor(Math.random() * this.config.count)].pop();
+}
                 if(Math.floor(performance.now() / 1000) % 2 === 0) this.updateUI();
                 this.renderer.render(this.scene, this.camera);
             }

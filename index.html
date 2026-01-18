@@ -142,7 +142,8 @@
                 
                 // Exponentially dampen the change based on distance from base
                 // The further away, the smaller the possible 'jump'
-                const dampening = Math.exp(-deviation * 0.04); 
+                // A higher value (0.15) makes the "rubber band" 10x tighter
+const dampening = Math.exp(-deviation * 0.15);
                 
                 const rawChange = (Math.random() * 60 + 20) * dampening;
                 const dir = Math.random() > 0.5 ? 1 : -1;

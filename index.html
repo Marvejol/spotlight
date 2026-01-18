@@ -1,14 +1,10 @@
-<html lang="en"><head><style>body {transition: opacity ease-in 0.2s; } 
-body[unresolved] {opacity: 0; display: block; overflow: hidden; position: relative; } 
-</style>
-    <style>
-        body { transition: opacity ease-in 0.2s; } 
-        body[unresolved] { opacity: 0; display: block; overflow: hidden; position: relative; } 
-    </style>
+<!DOCTYPE html>
+<html lang="en">
+<head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Snappy Spiky Mosaic - Static &amp; Clean</title>
-    <script async="" src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
+    <title>Snappy Mosaic - Modular Fuego</title>
+    <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
     <script type="importmap">
     {
         "imports": {
@@ -19,24 +15,59 @@ body[unresolved] {opacity: 0; display: block; overflow: hidden; position: relati
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; cursor: crosshair; font-family: sans-serif; }
         canvas { display: block; }
-        #ui { position: fixed; top: 20px; right: 20px; z-index: 100; }
+        
+        #ui-layer { position: fixed; inset: 0; pointer-events: none; z-index: 100; padding: 20px; color: black; }
+        .interactive { pointer-events: auto; }
+
+        /* Search Bar */
+        #search-box {
+            position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 8px; background: rgba(255,255,255,0.95); padding: 8px 15px; border-radius: 30px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+        }
+        #search-input { border: none; outline: none; background: transparent; width: 180px; font-weight: bold; }
+
+        /* Leaderboard */
+        #leaderboard {
+            width: 220px; background: rgba(255,255,255,0.95); border-radius: 15px; padding: 15px; 
+            box-shadow: 0 4px 15px rgba(0,0,0,0.4); font-size: 12px;
+        }
+        #lb-content { max-height: 50vh; overflow-y: auto; margin: 10px 0; border-top: 1px solid #eee; }
+        .lb-item { display: flex; justify-content: space-between; padding: 4px 0; cursor: pointer; }
+        .lb-item:hover { font-weight: bold; }
+
         .btn {
             background: white; color: black; border: none; padding: 10px 18px; 
-            border-radius: 20px; cursor: pointer; font-weight: bold; 
-            font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            border-radius: 20px; cursor: pointer; font-weight: bold; font-size: 11px;
+            text-transform: uppercase; box-shadow: 0 4px 10px rgba(0,0,0,0.3);
         }
+        #zoomToggle { position: absolute; top: 20px; right: 20px; }
     </style>
 </head>
 <body>
-    <div id="ui"><button class="btn" id="zoomToggle">Toggle View</button></div>
-    <div id="container"><canvas data-engine="three.js r160" width="2880" height="1556" style="display: block; width: 1440px; height: 778px;"></canvas></div>
+
+    <div id="ui-layer">
+        <div id="leaderboard" class="interactive">
+            <b style="font-size: 14px;">TOP BLOBS</b>
+            <div id="lb-content"></div>
+            <button class="btn" id="lb-toggle" style="width:100%; font-size: 9px;">Show Full List</button>
+        </div>
+
+        <div id="search-box" class="interactive">
+            <input type="text" id="search-input" placeholder="Cerca parola...">
+            <button class="btn" id="search-go" style="padding: 5px 12px;">GO</button>
+        </div>
+
+        <button class="btn interactive" id="zoomToggle">Toggle View</button>
+    </div>
+
+    <div id="container"></div>
 
     <script type="x-shader/x-vertex" id="vertexshader">
         varying vec2 vUv;
         void main() {
             vUv = uv;
-            gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
         }
     </script>
 
@@ -55,109 +86,68 @@ body[unresolved] {opacity: 0; display: block; overflow: hidden; position: relati
             float dist = length(pos);
             float angle = atan(pos.y, pos.x);
 
-            // Shape Logic (Untouched)
             float spikes = sin(angle * (8.0 + mod(uSeed, 4.0)) + uSeed) * 0.03;
             float burst = sin(angle * (12.0 + mod(uSeed, 8.0)) - uSeed) * 0.015;
             float shapeMask = 1.0 - smoothstep(0.41 + spikes + burst, 0.42 + spikes + burst, dist);
 
-            // --- FIXED: STATIC SCREEN-SPACE GRAIN ---
-            // Using gl_FragCoord ensures the grain doesn't move with the blob
             vec2 screenCoord = gl_FragCoord.xy;
             float staticGrain = (random(screenCoord * 0.5) - 0.5) * 0.14;
 
-            // Retro Gradient
             vec3 gradColor = mix(uColor * 1.15, uColor * 0.85, dist * 1.5);
-            vec3 finalColor = gradColor + staticGrain;
-
-            gl_FragColor = vec4(finalColor, shapeMask);
+            gl_FragColor = vec4(gradColor + staticGrain, shapeMask);
         }
     </script>
 
     <script type="module">
         import * as THREE from 'three';
 
-        const config = {
-            count: 750,         
-            popStep: 22,
-            startRadius: 18,
-            minRadius: 10,
-            maxRadius: 110,
-            growthChance: 0.01,
-            friction: 0.14,      
-            repulsion: 0.65,     
-            settleSpeed: 0.8,
-            zoomIn: 480,
-            zoomOut: 1300
-        };
+        // --- DATA ---
+        const text = "sistema dinamica risposta frequenza stabilità controllo feedback guadagno polo zero smorzamento oscillazione transitorio regime errore algoritmo funzione variabile vettore matrice sensore attuatore segnale filtro rumore analisi progetto sintesi modello simulazione tempo ampiezza fase margine stabilità asintotica sovraelongazione assestamento linearizzazione equilibrio stocastico deterministico campionamento quantizzazione digitale analogico microcontrollore automazione robotica intelligenza convoluzione trasformata laplace fourier z-transform spazio stati osservabilità raggiungibilità compensatore regolatore pid proporzionale integrale derivativo saturazione isteresi ritardo predizione stima filtro kalman identificazione minimi quadrati ottimizzazione vincolo obiettivo costo energia potenza efficienza affidabilità resilienza robustezza incertezza disturbo sensibilità banda passante risonanza picco smorzato naturale forzata libera eccitazione ingresso uscita stato retroazione unità gradino rampa impulso parabolico traiettoria inseguimento riferimento setpoint errore inseguimento precisione accuratezza risoluzione campionatore mantenitore ordine zero primo ricostruzione segnale aliasing nyquist shannon teorema campionamento stabilità ingresso-uscita bibo lyapunov energia dissipativa passività causalità invarianza temporale tempo-variante non lineare caotico frattale rete neurale apprendimento supervisionato rinforzo profondo regressione classificazione clusterizzazione neurone sinapsi peso bias attivazione gradiente backpropagation epoca batch loss optimizer adam sgd dropout normalizzazione regolarizzazione overfitting underfitting validazione cross-validation test set training set iperparametro architettura layer convoluzionale ricorrente trasformatore attenzione encoder decoder sequenza linguaggio naturale visione artificiale elaborazione immagini segmentazione detezione oggetti tracciamento realtà aumentata virtuale mista interfaccia uomo-macchina usabilità accessibilità prototipo sviluppo agile scrum kanban sprint backlog user story testing unitario integrazione sistema accettazione deploy pipeline ci-cd docker kubernetes cloud serverless microservizi api rest graphql database sql nosql transazione acid cap teorema sharding replicazione consistenza disponibilità partizionamento sicurezza crittografia autenticazione autorizzazione token jwt oauth2 ssl tls firewall malware phishing attacco ddos vulnerabilità patch aggiornamento manutenzione documentazione commento codice pulito refactoring debito tecnico architettura esagonale clean architecture solid principi design pattern singleton factory observer strategy decorator adapter proxy bridge facade memento state command iterator visitor template method chain of responsibility mediator flyweight interpreter";
+        const baseWords = text.split(" ");
+        const words = Array.from({ length: 750 }, (_, i) => `${baseWords[i % baseWords.length]}_${i + 1}`);
 
-        let blobs = [];
-        let width = window.innerWidth, height = window.innerHeight;
-        let targetZoom = config.zoomIn;
-        let currentZoom = config.zoomIn;
-
-        const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x000000);
-        const camera = new THREE.OrthographicCamera(width/-2, width/2, height/2, height/-2, 1, 1000);
-        camera.position.z = 10;
-
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(width, height);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-        document.getElementById('container').appendChild(renderer.domElement);
-
-        const vShader = document.getElementById('vertexshader').textContent;
-        const fShader = document.getElementById('fragmentshader').textContent;
-        const planeGeo = new THREE.PlaneGeometry(1, 1);
-        const raycaster = new THREE.Raycaster();
-        const mouse = new THREE.Vector2();
-
+        // --- BLOB CLASS ---
         class Blob {
-            constructor(x, y, radius, hue) {
+            constructor(id, word, x, y, radius, hue, scene, geo, matBase) {
+                this.id = id;
+                this.word = word;
                 this.pos = new THREE.Vector2(x, y);
                 this.vel = new THREE.Vector2(0, 0);
                 this.radius = radius;
                 this.targetRadius = radius;
                 this.mass = radius * radius;
 
-                this.material = new THREE.ShaderMaterial({
-                    uniforms: {
-                        uColor: { value: new THREE.Color(`hsl(${hue}, 65%, 55%)`) },
-                        uSeed: { value: Math.random() * 100.0 }
-                    },
-                    vertexShader: vShader, fragmentShader: fShader,
-                    transparent: true, depthTest: false
-                });
+                this.material = matBase.clone();
+                this.material.uniforms.uColor.value.setHSL(hue/360, 0.65, 0.55);
+                this.material.uniforms.uSeed.value = Math.random() * 100.0;
 
-                this.mesh = new THREE.Mesh(planeGeo, this.material);
-                this.mesh.userData.parentBlob = this;
+                this.mesh = new THREE.Mesh(geo, this.material);
+                this.mesh.userData.parent = this;
                 scene.add(this.mesh);
             }
 
-            update(vW, vH) {
-                this.radius += (this.targetRadius - this.radius) * config.settleSpeed;
+            update(friction, settleSpeed, vW, vH) {
+                this.radius += (this.targetRadius - this.radius) * settleSpeed;
                 this.mass = this.radius * this.radius;
-
                 this.pos.add(this.vel);
-                this.vel.multiplyScalar(config.friction);
+                this.vel.multiplyScalar(friction);
 
-                // --- FIXED BORDER LOGIC: Soft Repulsion instead of Hard Clamping ---
-                const edgeX = vW / 2;
-                const edgeY = vH / 2;
+                // Fuego Soft Borders
                 const margin = this.radius * 0.8;
+                const limitX = vW / 2 + margin;
+                const limitY = vH / 2 + margin;
 
-                // Push away from corners/edges gently to prevent piling
-                if (this.pos.x < -edgeX + margin) this.vel.x += 0.25;
-                if (this.pos.x >  edgeX - margin) this.vel.x -= 0.25;
-                if (this.pos.y < -edgeY + margin) this.vel.y += 0.25;
-                if (this.pos.y >  edgeY - margin) this.vel.y -= 0.25;
+                if (this.pos.x < -limitX) this.vel.x += 0.25;
+                if (this.pos.x >  limitX) this.vel.x -= 0.25;
+                if (this.pos.y < -limitY) this.vel.y += 0.25;
+                if (this.pos.y >  limitY) this.vel.y -= 0.25;
 
-                // Stop microscopic jitter
                 if (this.vel.lengthSq() < 0.0001) this.vel.set(0,0);
             }
 
             pop() {
                 const dir = Math.random() > 0.5 ? 1 : -1;
-                this.targetRadius = THREE.MathUtils.clamp(this.targetRadius + (config.popStep * dir), config.minRadius, config.maxRadius);
+                this.targetRadius = THREE.MathUtils.clamp(this.targetRadius + (22 * dir), 10, 110);
             }
 
             draw() {
@@ -167,87 +157,169 @@ body[unresolved] {opacity: 0; display: block; overflow: hidden; position: relati
             }
         }
 
-        function init() {
-            // --- GRID SPAWN: Distribute evenly to start ---
-            const aspect = width / height;
-            const cols = Math.floor(Math.sqrt(config.count * aspect));
-            const rows = Math.ceil(config.count / cols);
-            const spacingX = (config.zoomOut * aspect) / cols;
-            const spacingY = config.zoomOut / rows;
+        // --- APP ENGINE ---
+        class App {
+            constructor() {
+                this.config = { count: 750, friction: 0.14, repulsion: 0.65, settleSpeed: 0.8, zoomIn: 480, zoomOut: 1300 };
+                this.blobs = [];
+                this.targetZoom = this.config.zoomIn;
+                this.currentZoom = this.config.zoomIn;
+                this.cameraOffset = new THREE.Vector2(0, 0);
+                this.isPanning = false;
+                this.lbFull = false;
 
-            for(let i = 0; i < config.count; i++) {
-                const r = Math.floor(i / cols);
-                const c = i % cols;
-                // Add a tiny bit of random jitter to the grid
-                const x = (c - cols/2) * spacingX + (Math.random()-0.5) * 10;
-                const y = (r - rows/2) * spacingY + (Math.random()-0.5) * 10;
-                blobs.push(new Blob(x, y, config.startRadius, Math.random() * 360));
+                this.initScene();
+                this.initBlobs();
+                this.bindEvents();
+                this.animate();
             }
-        }
-        init();
 
-        document.getElementById('zoomToggle').addEventListener('click', () => {
-            targetZoom = (targetZoom === config.zoomIn) ? config.zoomOut : config.zoomIn;
-        });
+            initScene() {
+                this.scene = new THREE.Scene();
+                this.camera = new THREE.OrthographicCamera();
+                this.camera.position.z = 10;
+                this.renderer = new THREE.WebGLRenderer({ antialias: true });
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+                document.getElementById('container').appendChild(this.renderer.domElement);
+            }
 
-        window.addEventListener('mousedown', (e) => {
-            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
-            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
-            raycaster.setFromCamera(mouse, camera);
-            const hits = raycaster.intersectObjects(scene.children);
-            if (hits.length > 0) hits[0].object.userData.parentBlob.pop();
-        });
+            initBlobs() {
+                const geo = new THREE.PlaneGeometry(1, 1);
+                const mat = new THREE.ShaderMaterial({
+                    uniforms: { uColor: { value: new THREE.Color() }, uSeed: { value: 0 } },
+                    vertexShader: document.getElementById('vertexshader').textContent,
+                    fragmentShader: document.getElementById('fragmentshader').textContent,
+                    transparent: true, depthTest: false
+                });
 
-        function resolve() {
-            for (let i = 0; i < blobs.length; i++) {
-                const b1 = blobs[i];
-                for (let j = i + 1; j < blobs.length; j++) {
-                    const b2 = blobs[j];
-                    const dx = b2.pos.x - b1.pos.x;
-                    const dy = b2.pos.y - b1.pos.y;
-                    const dSq = dx*dx + dy*dy;
-                    const minD = b1.radius + b2.radius;
-                    
-                    if (dSq < minD * minD) {
-                        const dist = Math.sqrt(dSq) || 0.1;
-                        const overlap = (minD - dist) * config.repulsion;
-                        const nx = dx/dist, ny = dy/dist;
-                        const totalMass = b1.mass + b2.mass;
-                        b1.vel.x -= nx * overlap * (b2.mass / totalMass);
-                        b1.vel.y -= ny * overlap * (b2.mass / totalMass);
-                        b2.vel.x += nx * overlap * (b1.mass / totalMass);
-                        b2.vel.y += ny * overlap * (b1.mass / totalMass);
+                const aspect = window.innerWidth / window.innerHeight;
+                const cols = Math.floor(Math.sqrt(this.config.count * aspect));
+                const spacing = (this.config.zoomOut * aspect) / cols;
+
+                for(let i = 0; i < this.config.count; i++) {
+                    const r = Math.floor(i / cols);
+                    const c = i % cols;
+                    const x = (c - cols/2) * spacing + (Math.random()-0.5)*10;
+                    const y = (r - (this.config.count/cols)/2) * spacing + (Math.random()-0.5)*10;
+                    this.blobs.push(new Blob(i, words[i], x, y, 18, Math.random() * 360, this.scene, geo, mat));
+                }
+            }
+
+            bindEvents() {
+                document.getElementById('zoomToggle').onclick = () => {
+                    this.targetZoom = (this.targetZoom === this.config.zoomIn) ? this.config.zoomOut : this.config.zoomIn;
+                    if(this.targetZoom === this.config.zoomIn) this.cameraOffset.set(0,0);
+                };
+
+                document.getElementById('lb-toggle').onclick = () => {
+                    this.lbFull = !this.lbFull;
+                    document.getElementById('lb-toggle').innerText = this.lbFull ? "Show Top 10" : "Show Full List";
+                };
+
+                document.getElementById('search-go').onclick = () => this.search();
+                document.getElementById('search-input').onkeydown = (e) => { if(e.key === "Enter") this.search(); };
+
+                window.addEventListener('mousedown', (e) => this.onMouseDown(e));
+                window.addEventListener('mousemove', (e) => this.onMouseMove(e));
+                window.addEventListener('mouseup', () => this.isPanning = false);
+                window.addEventListener('resize', () => this.renderer.setSize(window.innerWidth, window.innerHeight));
+            }
+
+            search() {
+                const q = document.getElementById('search-input').value.toLowerCase();
+                const b = this.blobs.find(x => x.word.toLowerCase().includes(q));
+                if(b) {
+                    this.cameraOffset.copy(b.pos);
+                    this.targetZoom = this.config.zoomIn;
+                    b.pop();
+                }
+            }
+
+            onMouseDown(e) {
+                if (e.target.closest('.interactive')) return;
+                
+                // Pan activation
+                if (this.targetZoom === this.config.zoomOut) {
+                    this.isPanning = true;
+                    this.prevMouse = { x: e.clientX, y: e.clientY };
+                }
+
+                // Raycast for Pop
+                const mouse = new THREE.Vector2((e.clientX/window.innerWidth)*2-1, -(e.clientY/window.innerHeight)*2+1);
+                const ray = new THREE.Raycaster();
+                ray.setFromCamera(mouse, this.camera);
+                const hits = ray.intersectObjects(this.scene.children);
+                if(hits.length > 0) hits[0].object.userData.parent.pop();
+            }
+
+            onMouseMove(e) {
+                if (this.isPanning && this.targetZoom === this.config.zoomOut) {
+                    const scalar = this.currentZoom / window.innerHeight;
+                    this.cameraOffset.x -= (e.clientX - this.prevMouse.x) * scalar;
+                    this.cameraOffset.y += (e.clientY - this.prevMouse.y) * scalar;
+                    this.prevMouse = { x: e.clientX, y: e.clientY };
+                }
+            }
+
+            resolvePhysics() {
+                for (let i = 0; i < this.blobs.length; i++) {
+                    const b1 = this.blobs[i];
+                    for (let j = i + 1; j < this.blobs.length; j++) {
+                        const b2 = this.blobs[j];
+                        const dx = b2.pos.x - b1.pos.x;
+                        const dy = b2.pos.y - b1.pos.y;
+                        const d2 = dx*dx + dy*dy;
+                        const min = b1.radius + b2.radius;
+                        if (d2 < min * min) {
+                            const d = Math.sqrt(d2) || 0.1;
+                            const overlap = (min - d) * this.config.repulsion;
+                            const nx = dx/d, ny = dy/d;
+                            const tm = b1.mass + b2.mass;
+                            b1.vel.x -= nx * overlap * (b2.mass / tm);
+                            b1.vel.y -= ny * overlap * (b2.mass / tm);
+                            b2.vel.x += nx * overlap * (b1.mass / tm);
+                            b2.vel.y += ny * overlap * (b1.mass / tm);
+                        }
                     }
                 }
             }
-        }
 
-        function animate() {
-            requestAnimationFrame(animate);
-            currentZoom += (targetZoom - currentZoom) * 0.08;
-            const aspect = window.innerWidth / window.innerHeight;
-            const vW = currentZoom * aspect;
-            const vH = currentZoom;
-
-            camera.left = -vW / 2; camera.right = vW / 2;
-            camera.top = vH / 2; camera.bottom = -vH / 2;
-            camera.updateProjectionMatrix();
-
-            if (Math.random() < config.growthChance) {
-                blobs[Math.floor(Math.random() * blobs.length)].pop();
+            updateUI() {
+                const sorted = [...this.blobs].sort((a,b) => b.radius - a.radius);
+                const list = this.lbFull ? sorted.slice(0, 50) : sorted.slice(0, 10);
+                document.getElementById('lb-content').innerHTML = list.map((b, i) => `
+                    <div class="lb-item" onclick="window.app.cameraOffset.copy(window.app.blobs[${b.id}].pos); window.app.targetZoom = 480;">
+                        <span>${i+1}. ${b.word.split('_')[0]}</span>
+                        <span style="opacity:0.5">${Math.round(b.radius)}</span>
+                    </div>
+                `).join('');
             }
 
-            blobs.forEach(b => b.update(vW, vH));
-            resolve();
-            blobs.forEach(b => b.draw());
-            renderer.render(scene, camera);
+            animate() {
+                requestAnimationFrame(() => this.animate());
+                this.currentZoom += (this.targetZoom - this.currentZoom) * 0.08;
+                const aspect = window.innerWidth / window.innerHeight;
+                const vW = this.currentZoom * aspect, vH = this.currentZoom;
+
+                this.camera.left = -vW/2 + this.cameraOffset.x;
+                this.camera.right = vW/2 + this.cameraOffset.x;
+                this.camera.top = vH/2 + this.cameraOffset.y;
+                this.camera.bottom = -vH/2 + this.cameraOffset.y;
+                this.camera.updateProjectionMatrix();
+
+                this.blobs.forEach(b => b.update(this.config.friction, this.config.settleSpeed, vW, vH));
+                this.resolvePhysics();
+                this.blobs.forEach(b => b.draw());
+
+                if(Math.random() < 0.01) this.blobs[Math.floor(Math.random()*this.config.count)].pop();
+                if(Math.floor(performance.now() / 1000) % 2 === 0) this.updateUI();
+
+                this.renderer.render(this.scene, this.camera);
+            }
         }
-        animate();
 
-        window.addEventListener('resize', () => {
-            width = window.innerWidth; height = window.innerHeight;
-            renderer.setSize(width, height);
-        });
+        window.app = new App();
     </script>
-
-<canvas id="predictor-ghost-canvas" width="1440" height="778" style="position: fixed; top: 0px; left: 0px; pointer-events: none; z-index: 2147483646;"></canvas><div style="position: fixed; bottom: 15px; right: 15px; z-index: 2147483647; pointer-events: auto;"><button style="background: rgb(231, 76, 60); color: white; border: none; padding: 8px 16px; border-radius: 20px; cursor: pointer; font-weight: bold; box-shadow: rgba(0, 0, 0, 0.3) 0px 4px 10px;">Reset Learning</button></div></body></html>
+</body>
+</html>

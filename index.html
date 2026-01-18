@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Snappy Mosaic - Modular Fuego</title>
+    <title>Mosaic - Sincronizzato & Highlight</title>
     <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
     <script type="importmap">
     {
@@ -15,27 +15,21 @@
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; cursor: crosshair; font-family: sans-serif; }
         canvas { display: block; }
-        
         #ui-layer { position: fixed; inset: 0; pointer-events: none; z-index: 100; padding: 20px; color: black; }
         .interactive { pointer-events: auto; }
-
-        /* Search Bar */
         #search-box {
             position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
             display: flex; gap: 8px; background: rgba(255,255,255,0.95); padding: 8px 15px; border-radius: 30px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.4);
         }
         #search-input { border: none; outline: none; background: transparent; width: 180px; font-weight: bold; }
-
-        /* Leaderboard */
         #leaderboard {
             width: 220px; background: rgba(255,255,255,0.95); border-radius: 15px; padding: 15px; 
             box-shadow: 0 4px 15px rgba(0,0,0,0.4); font-size: 12px;
         }
         #lb-content { max-height: 50vh; overflow-y: auto; margin: 10px 0; border-top: 1px solid #eee; }
         .lb-item { display: flex; justify-content: space-between; padding: 4px 0; cursor: pointer; }
-        .lb-item:hover { font-weight: bold; }
-
+        .lb-item:hover { font-weight: bold; color: #2196F3; }
         .btn {
             background: white; color: black; border: none; padding: 10px 18px; 
             border-radius: 20px; cursor: pointer; font-weight: bold; font-size: 11px;
@@ -52,126 +46,78 @@
             <div id="lb-content"></div>
             <button class="btn" id="lb-toggle" style="width:100%; font-size: 9px;">Show Full List</button>
         </div>
-
         <div id="search-box" class="interactive">
-            <input type="text" id="search-input" placeholder="Cerca parola...">
+            <input type="text" id="search-input" placeholder="Cerca ID o Parola...">
             <button class="btn" id="search-go" style="padding: 5px 12px;">GO</button>
         </div>
-
         <button class="btn interactive" id="zoomToggle">Toggle View</button>
     </div>
-
     <div id="container"></div>
 
     <script type="x-shader/x-vertex" id="vertexshader">
         varying vec2 vUv;
-        void main() {
-            vUv = uv;
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
+        void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
     </script>
 
     <script type="x-shader/x-fragment" id="fragmentshader">
         varying vec2 vUv;
         uniform vec3 uColor;
         uniform float uSeed;
-
-        float random(vec2 st) {
-            return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
-        }
-
+        float random(vec2 st) { return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123); }
         void main() {
-            vec2 center = vec2(0.5, 0.5);
-            vec2 pos = vUv - center;
+            vec2 pos = vUv - 0.5;
             float dist = length(pos);
             float angle = atan(pos.y, pos.x);
-
             float spikes = sin(angle * (8.0 + mod(uSeed, 4.0)) + uSeed) * 0.03;
             float burst = sin(angle * (12.0 + mod(uSeed, 8.0)) - uSeed) * 0.015;
             float shapeMask = 1.0 - smoothstep(0.41 + spikes + burst, 0.42 + spikes + burst, dist);
-
-            vec2 screenCoord = gl_FragCoord.xy;
-            float staticGrain = (random(screenCoord * 0.5) - 0.5) * 0.14;
-
-            vec3 gradColor = mix(uColor * 1.15, uColor * 0.85, dist * 1.5);
-            gl_FragColor = vec4(gradColor + staticGrain, shapeMask);
+            float grain = (random(gl_FragCoord.xy * 0.5) - 0.5) * 0.14;
+            gl_FragColor = vec4(mix(uColor * 1.15, uColor * 0.85, dist * 1.5) + grain, shapeMask);
         }
     </script>
 
     <script type="module">
         import * as THREE from 'three';
 
-        // --- DATA ---
         const text = "sistema dinamica risposta frequenza stabilità controllo feedback guadagno polo zero smorzamento oscillazione transitorio regime errore algoritmo funzione variabile vettore matrice sensore attuatore segnale filtro rumore analisi progetto sintesi modello simulazione tempo ampiezza fase margine stabilità asintotica sovraelongazione assestamento linearizzazione equilibrio stocastico deterministico campionamento quantizzazione digitale analogico microcontrollore automazione robotica intelligenza convoluzione trasformata laplace fourier z-transform spazio stati osservabilità raggiungibilità compensatore regolatore pid proporzionale integrale derivativo saturazione isteresi ritardo predizione stima filtro kalman identificazione minimi quadrati ottimizzazione vincolo obiettivo costo energia potenza efficienza affidabilità resilienza robustezza incertezza disturbo sensibilità banda passante risonanza picco smorzato naturale forzata libera eccitazione ingresso uscita stato retroazione unità gradino rampa impulso parabolico traiettoria inseguimento riferimento setpoint errore inseguimento precisione accuratezza risoluzione campionatore mantenitore ordine zero primo ricostruzione segnale aliasing nyquist shannon teorema campionamento stabilità ingresso-uscita bibo lyapunov energia dissipativa passività causalità invarianza temporale tempo-variante non lineare caotico frattale rete neurale apprendimento supervisionato rinforzo profondo regressione classificazione clusterizzazione neurone sinapsi peso bias attivazione gradiente backpropagation epoca batch loss optimizer adam sgd dropout normalizzazione regolarizzazione overfitting underfitting validazione cross-validation test set training set iperparametro architettura layer convoluzionale ricorrente trasformatore attenzione encoder decoder sequenza linguaggio naturale visione artificiale elaborazione immagini segmentazione detezione oggetti tracciamento realtà aumentata virtuale mista interfaccia uomo-macchina usabilità accessibilità prototipo sviluppo agile scrum kanban sprint backlog user story testing unitario integrazione sistema accettazione deploy pipeline ci-cd docker kubernetes cloud serverless microservizi api rest graphql database sql nosql transazione acid cap teorema sharding replicazione consistenza disponibilità partizionamento sicurezza crittografia autenticazione autorizzazione token jwt oauth2 ssl tls firewall malware phishing attacco ddos vulnerabilità patch aggiornamento manutenzione documentazione commento codice pulito refactoring debito tecnico architettura esagonale clean architecture solid principi design pattern singleton factory observer strategy decorator adapter proxy bridge facade memento state command iterator visitor template method chain of responsibility mediator flyweight interpreter";
         const baseWords = text.split(" ");
         const words = Array.from({ length: 750 }, (_, i) => `${baseWords[i % baseWords.length]}_${i + 1}`);
 
-        // --- BLOB CLASS ---
         class Blob {
             constructor(id, word, x, y, radius, hue, scene, geo, matBase) {
-                this.id = id;
-                this.word = word;
-                this.pos = new THREE.Vector2(x, y);
-                this.vel = new THREE.Vector2(0, 0);
-                this.radius = radius;
-                this.targetRadius = radius;
+                this.id = id; this.word = word; this.pos = new THREE.Vector2(x, y);
+                this.vel = new THREE.Vector2(0, 0); this.radius = radius; this.targetRadius = radius;
                 this.mass = radius * radius;
-
                 this.material = matBase.clone();
                 this.material.uniforms.uColor.value.setHSL(hue/360, 0.65, 0.55);
                 this.material.uniforms.uSeed.value = Math.random() * 100.0;
-
                 this.mesh = new THREE.Mesh(geo, this.material);
                 this.mesh.userData.parent = this;
                 scene.add(this.mesh);
             }
-
-            update(friction, settleSpeed, vW, vH) {
-                this.radius += (this.targetRadius - this.radius) * settleSpeed;
+            update(fric, settle, vW, vH) {
+                this.radius += (this.targetRadius - this.radius) * settle;
                 this.mass = this.radius * this.radius;
-                this.pos.add(this.vel);
-                this.vel.multiplyScalar(friction);
-
-                // Fuego Soft Borders
+                this.pos.add(this.vel); this.vel.multiplyScalar(fric);
                 const margin = this.radius * 0.8;
-                const limitX = vW / 2 + margin;
-                const limitY = vH / 2 + margin;
-
-                if (this.pos.x < -limitX) this.vel.x += 0.25;
-                if (this.pos.x >  limitX) this.vel.x -= 0.25;
-                if (this.pos.y < -limitY) this.vel.y += 0.25;
-                if (this.pos.y >  limitY) this.vel.y -= 0.25;
-
+                if (this.pos.x < -vW/2 + margin) this.vel.x += 0.25;
+                if (this.pos.x >  vW/2 - margin) this.vel.x -= 0.25;
+                if (this.pos.y < -vH/2 + margin) this.vel.y += 0.25;
+                if (this.pos.y >  vH/2 - margin) this.vel.y -= 0.25;
                 if (this.vel.lengthSq() < 0.0001) this.vel.set(0,0);
             }
-
-            pop() {
-                const dir = Math.random() > 0.5 ? 1 : -1;
-                this.targetRadius = THREE.MathUtils.clamp(this.targetRadius + (22 * dir), 10, 110);
-            }
-
-            draw() {
-                const d = this.radius * 2.6;
-                this.mesh.scale.set(d, d, 1);
-                this.mesh.position.set(this.pos.x, this.pos.y, 0);
-            }
+            pop() { this.targetRadius = Math.random() > 0.5 ? Math.min(this.targetRadius + 22, 110) : Math.max(this.targetRadius - 22, 10); }
+            draw() { const d = this.radius * 2.6; this.mesh.scale.set(d, d, 1); this.mesh.position.set(this.pos.x, this.pos.y, 0); }
         }
 
-        // --- APP ENGINE ---
         class App {
             constructor() {
                 this.config = { count: 750, friction: 0.14, repulsion: 0.65, settleSpeed: 0.8, zoomIn: 480, zoomOut: 1300 };
-                this.blobs = [];
-                this.targetZoom = this.config.zoomIn;
-                this.currentZoom = this.config.zoomIn;
-                this.cameraOffset = new THREE.Vector2(0, 0);
-                this.isPanning = false;
-                this.lbFull = false;
+                this.blobs = []; this.targetZoom = this.config.zoomIn; this.currentZoom = this.config.zoomIn;
+                this.cameraOffset = new THREE.Vector2(0, 0); this.isPanning = false; this.lbFull = false;
+                this.selectedBlobId = null;
 
-                this.initScene();
-                this.initBlobs();
-                this.bindEvents();
-                this.animate();
+                this.initScene(); this.initBlobs(); this.initHighlight(); this.bindEvents(); this.animate();
             }
 
             initScene() {
@@ -192,18 +138,26 @@
                     fragmentShader: document.getElementById('fragmentshader').textContent,
                     transparent: true, depthTest: false
                 });
-
                 const aspect = window.innerWidth / window.innerHeight;
                 const cols = Math.floor(Math.sqrt(this.config.count * aspect));
                 const spacing = (this.config.zoomOut * aspect) / cols;
-
                 for(let i = 0; i < this.config.count; i++) {
-                    const r = Math.floor(i / cols);
-                    const c = i % cols;
+                    const r = Math.floor(i / cols), c = i % cols;
                     const x = (c - cols/2) * spacing + (Math.random()-0.5)*10;
                     const y = (r - (this.config.count/cols)/2) * spacing + (Math.random()-0.5)*10;
                     this.blobs.push(new Blob(i, words[i], x, y, 18, Math.random() * 360, this.scene, geo, mat));
                 }
+            }
+
+            initHighlight() {
+                const curve = new THREE.EllipseCurve(0, 0, 1, 1, 0, 2 * Math.PI, false, 0);
+                const points = curve.getPoints(50);
+                const geometry = new THREE.BufferGeometry().setFromPoints(points);
+                const material = new THREE.LineDashedMaterial({ color: 0xffffff, dashSize: 0.1, gapSize: 0.1 });
+                this.highlightLine = new THREE.Line(geometry, material);
+                this.highlightLine.computeLineDistances();
+                this.highlightLine.visible = false;
+                this.scene.add(this.highlightLine);
             }
 
             bindEvents() {
@@ -211,46 +165,46 @@
                     this.targetZoom = (this.targetZoom === this.config.zoomIn) ? this.config.zoomOut : this.config.zoomIn;
                     if(this.targetZoom === this.config.zoomIn) this.cameraOffset.set(0,0);
                 };
-
                 document.getElementById('lb-toggle').onclick = () => {
                     this.lbFull = !this.lbFull;
                     document.getElementById('lb-toggle').innerText = this.lbFull ? "Show Top 10" : "Show Full List";
                 };
-
                 document.getElementById('search-go').onclick = () => this.search();
                 document.getElementById('search-input').onkeydown = (e) => { if(e.key === "Enter") this.search(); };
-
                 window.addEventListener('mousedown', (e) => this.onMouseDown(e));
                 window.addEventListener('mousemove', (e) => this.onMouseMove(e));
                 window.addEventListener('mouseup', () => this.isPanning = false);
                 window.addEventListener('resize', () => this.renderer.setSize(window.innerWidth, window.innerHeight));
             }
 
+            selectBlob(blob) {
+                if(!blob) return;
+                this.selectedBlobId = blob.id;
+                this.cameraOffset.copy(blob.pos);
+                this.targetZoom = this.config.zoomIn;
+                blob.pop();
+                this.highlightLine.visible = true;
+            }
+
             search() {
                 const q = document.getElementById('search-input').value.toLowerCase();
-                const b = this.blobs.find(x => x.word.toLowerCase().includes(q));
-                if(b) {
-                    this.cameraOffset.copy(b.pos);
-                    this.targetZoom = this.config.zoomIn;
-                    b.pop();
-                }
+                const b = this.blobs.find(x => x.word.toLowerCase() === q || x.word.toLowerCase().includes(q));
+                this.selectBlob(b);
             }
 
             onMouseDown(e) {
                 if (e.target.closest('.interactive')) return;
-                
-                // Pan activation
                 if (this.targetZoom === this.config.zoomOut) {
-                    this.isPanning = true;
-                    this.prevMouse = { x: e.clientX, y: e.clientY };
+                    this.isPanning = true; this.prevMouse = { x: e.clientX, y: e.clientY };
                 }
-
-                // Raycast for Pop
                 const mouse = new THREE.Vector2((e.clientX/window.innerWidth)*2-1, -(e.clientY/window.innerHeight)*2+1);
                 const ray = new THREE.Raycaster();
                 ray.setFromCamera(mouse, this.camera);
                 const hits = ray.intersectObjects(this.scene.children);
-                if(hits.length > 0) hits[0].object.userData.parent.pop();
+                if(hits.length > 0 && hits[0].object !== this.highlightLine) {
+                    const b = hits[0].object.userData.parent;
+                    this.selectBlob(b);
+                }
             }
 
             onMouseMove(e) {
@@ -267,19 +221,12 @@
                     const b1 = this.blobs[i];
                     for (let j = i + 1; j < this.blobs.length; j++) {
                         const b2 = this.blobs[j];
-                        const dx = b2.pos.x - b1.pos.x;
-                        const dy = b2.pos.y - b1.pos.y;
-                        const d2 = dx*dx + dy*dy;
-                        const min = b1.radius + b2.radius;
+                        const dx = b2.pos.x - b1.pos.x, dy = b2.pos.y - b1.pos.y, d2 = dx*dx + dy*dy, min = b1.radius + b2.radius;
                         if (d2 < min * min) {
-                            const d = Math.sqrt(d2) || 0.1;
-                            const overlap = (min - d) * this.config.repulsion;
-                            const nx = dx/d, ny = dy/d;
-                            const tm = b1.mass + b2.mass;
-                            b1.vel.x -= nx * overlap * (b2.mass / tm);
-                            b1.vel.y -= ny * overlap * (b2.mass / tm);
-                            b2.vel.x += nx * overlap * (b1.mass / tm);
-                            b2.vel.y += ny * overlap * (b1.mass / tm);
+                            const d = Math.sqrt(d2) || 0.1, overlap = (min - d) * this.config.repulsion;
+                            const nx = dx/d, ny = dy/d, tm = b1.mass + b2.mass;
+                            b1.vel.x -= nx * overlap * (b2.mass / tm); b1.vel.y -= ny * overlap * (b2.mass / tm);
+                            b2.vel.x += nx * overlap * (b1.mass / tm); b2.vel.y += ny * overlap * (b1.mass / tm);
                         }
                     }
                 }
@@ -288,9 +235,9 @@
             updateUI() {
                 const sorted = [...this.blobs].sort((a,b) => b.radius - a.radius);
                 const list = this.lbFull ? sorted.slice(0, 50) : sorted.slice(0, 10);
-                document.getElementById('lb-content').innerHTML = list.map((b, i) => `
-                    <div class="lb-item" onclick="window.app.cameraOffset.copy(window.app.blobs[${b.id}].pos); window.app.targetZoom = 480;">
-                        <span>${i+1}. ${b.word.split('_')[0]}</span>
+                document.getElementById('lb-content').innerHTML = list.map((b) => `
+                    <div class="lb-item" onclick="window.app.selectBlob(window.app.blobs[${b.id}])">
+                        <span>${b.word.split('_')[0]}</span>
                         <span style="opacity:0.5">${Math.round(b.radius)}</span>
                     </div>
                 `).join('');
@@ -301,24 +248,26 @@
                 this.currentZoom += (this.targetZoom - this.currentZoom) * 0.08;
                 const aspect = window.innerWidth / window.innerHeight;
                 const vW = this.currentZoom * aspect, vH = this.currentZoom;
-
-                this.camera.left = -vW/2 + this.cameraOffset.x;
-                this.camera.right = vW/2 + this.cameraOffset.x;
-                this.camera.top = vH/2 + this.cameraOffset.y;
-                this.camera.bottom = -vH/2 + this.cameraOffset.y;
+                this.camera.left = -vW/2 + this.cameraOffset.x; this.camera.right = vW/2 + this.cameraOffset.x;
+                this.camera.top = vH/2 + this.cameraOffset.y; this.camera.bottom = -vH/2 + this.cameraOffset.y;
                 this.camera.updateProjectionMatrix();
 
                 this.blobs.forEach(b => b.update(this.config.friction, this.config.settleSpeed, vW, vH));
                 this.resolvePhysics();
                 this.blobs.forEach(b => b.draw());
 
-                if(Math.random() < 0.01) this.blobs[Math.floor(Math.random()*this.config.count)].pop();
-                if(Math.floor(performance.now() / 1000) % 2 === 0) this.updateUI();
+                if(this.selectedBlobId !== null) {
+                    const b = this.blobs[this.selectedBlobId];
+                    const s = b.radius * 3.5 + Math.sin(performance.now()*0.01)*5;
+                    this.highlightLine.position.set(b.pos.x, b.pos.y, 0.1);
+                    this.highlightLine.scale.set(s, s, 1);
+                }
 
+                if(Math.random() < 0.01) this.blobs[Math.floor(Math.random()*750)].pop();
+                if(Math.floor(performance.now() / 1000) % 2 === 0) this.updateUI();
                 this.renderer.render(this.scene, this.camera);
             }
         }
-
         window.app = new App();
     </script>
 </body>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mosaic Fuego - Restoring Exponential</title>
+    <title>Mosaic Fuego - Attention Economy</title>
     <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
     <script type="importmap">
     {
@@ -17,40 +17,70 @@
         canvas { display: block; }
         #ui-layer { position: fixed; inset: 0; pointer-events: none; z-index: 100; padding: 20px; color: black; }
         .interactive { pointer-events: auto; }
-        #search-box {
+        
+        /* Top Bar for API Controls */
+        #api-controls {
             position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
-            display: flex; gap: 8px; background: rgba(255,255,255,0.95); padding: 8px 15px; border-radius: 30px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+            display: flex; gap: 8px; background: rgba(255,255,255,0.95); padding: 10px 20px; border-radius: 30px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.4); align-items: center;
         }
-        #search-input { border: none; outline: none; background: transparent; width: 180px; font-weight: bold; }
+        #api-input { border: 1px solid #ccc; padding: 6px 10px; border-radius: 4px; width: 200px; font-size: 11px; }
+        .status-dot { width: 10px; height: 10px; border-radius: 50%; background: #ccc; margin-right: 5px; transition: background 0.3s; }
+        
+        /* Leaderboard & Stats */
         #leaderboard {
+            position: absolute; top: 20px; left: 20px;
             width: 220px; background: rgba(255,255,255,0.95); border-radius: 15px; padding: 15px; 
             box-shadow: 0 4px 15px rgba(0,0,0,0.4); font-size: 12px;
         }
-        #lb-content { max-height: 50vh; overflow-y: auto; margin: 10px 0; border-top: 1px solid #eee; }
-        .lb-item { display: flex; justify-content: space-between; padding: 4px 0; cursor: pointer; }
-        .lb-item:hover { font-weight: bold; color: #000; }
+        #stats-box { margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid #eee; font-family: monospace; }
+        #lb-content { max-height: 40vh; overflow-y: auto; margin: 10px 0; }
+        .lb-item { display: flex; justify-content: space-between; padding: 4px 0; cursor: pointer; border-bottom: 1px dotted #eee; }
+        .lb-item:hover { font-weight: bold; color: #2196F3; }
+        
         .btn {
-            background: white; color: black; border: none; padding: 10px 18px; 
+            background: #222; color: white; border: none; padding: 8px 16px; 
             border-radius: 20px; cursor: pointer; font-weight: bold; font-size: 11px;
             text-transform: uppercase; box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            transition: transform 0.1s;
         }
+        .btn:active { transform: scale(0.95); }
+        .btn-green { background: #2e7d32; }
+        
         #zoomToggle { position: absolute; top: 20px; right: 20px; }
+        
+        /* Message ticker for incoming data */
+        #ticker {
+            position: absolute; bottom: 20px; left: 20px; right: 20px;
+            background: linear-gradient(90deg, transparent, rgba(0,0,0,0.8), transparent);
+            color: #0f0; font-family: monospace; padding: 10px; text-align: center;
+            font-size: 12px; pointer-events: none; opacity: 0; transition: opacity 0.5s;
+        }
     </style>
 </head>
 <body>
 
     <div id="ui-layer">
         <div id="leaderboard" class="interactive">
-            <b style="font-size: 14px;">TOP BLOBS</b>
+            <div id="stats-box">
+                Active Agents: <span id="agent-count">2000</span><br>
+                Token Moves/s: <span id="flow-rate">0</span>
+            </div>
+            <b style="font-size: 14px;">TOP TRENDS</b>
             <div id="lb-content"></div>
-            <button class="btn" id="lb-toggle" style="width:100%; font-size: 9px;">Show Full List</button>
+            <button class="btn" id="lb-toggle" style="width:100%; font-size: 9px; margin-top:5px;">Show Full List</button>
         </div>
-        <div id="search-box" class="interactive">
-            <input type="text" id="search-input" placeholder="Cerca parola...">
-            <button class="btn" id="search-go" style="padding: 5px 12px;">GO</button>
+
+        <div id="api-controls" class="interactive">
+            <div id="connection-dot" class="status-dot"></div>
+            <input type="text" id="api-token" placeholder="Paste Mastodon Access Token" id="api-input">
+            <button class="btn btn-green" id="btn-connect">Connect Real</button>
+            <span style="font-size:10px; opacity:0.5;">OR</span>
+            <button class="btn" id="btn-simulate">Simulate Data</button>
         </div>
+
         <button class="btn interactive" id="zoomToggle">Toggle View</button>
+        <div id="ticker">Waiting for data stream...</div>
     </div>
     <div id="container"></div>
 
@@ -65,6 +95,7 @@
         uniform float uSeed;
         uniform float uSelected;
         uniform float uTime;
+        uniform float uIntensity; // New: visualizes token heat
 
         float random(vec2 st) { return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123); }
 
@@ -73,7 +104,9 @@
             float dist = length(pos);
             float angle = atan(pos.y, pos.x);
 
-            float spikes = sin(angle * (8.0 + mod(uSeed, 4.0)) + uSeed) * 0.03;
+            // Make spikes more aggressive if the blob has high token intensity
+            float spikeAmp = 0.03 + (uIntensity * 0.05); 
+            float spikes = sin(angle * (8.0 + mod(uSeed, 4.0)) + uSeed + uTime * uIntensity) * spikeAmp;
             float burst = sin(angle * (12.0 + mod(uSeed, 8.0)) - uSeed) * 0.015;
             
             float edgeDist = 0.41 + spikes + burst;
@@ -81,7 +114,10 @@
             
             vec2 screenCoord = gl_FragCoord.xy;
             float staticGrain = (random(screenCoord * 0.5) - 0.5) * 0.14;
-            vec3 color = mix(uColor * 1.15, uColor * 0.85, dist * 1.5) + staticGrain;
+            
+            // Mix color based on intensity (Active topics get brighter/whiter)
+            vec3 baseColor = mix(uColor, vec3(1.0, 1.0, 1.0), uIntensity * 0.6);
+            vec3 color = mix(baseColor * 1.15, baseColor * 0.85, dist * 1.5) + staticGrain;
 
             if(uSelected > 0.5) {
                 float dots = step(0.5, sin(angle * 20.0 + uTime * 5.0));
@@ -96,79 +132,127 @@
     <script type="module">
         import * as THREE from 'three';
 
+        // 1. DATA SETUP
         const text = "sistema dinamica risposta frequenza stabilità controllo feedback guadagno polo zero smorzamento oscillazione transitorio regime errore algoritmo funzione variabile vettore matrice sensore attuatore segnale filtro rumore analisi progetto sintesi modello simulazione tempo ampiezza fase margine stabilità asintotica sovraelongazione assestamento linearizzazione equilibrio stocastico deterministico campionamento quantizzazione digitale analogico microcontrollore automazione robotica intelligenza convoluzione trasformata laplace fourier z-transform spazio stati osservabilità raggiungibilità compensatore regolatore pid proporzionale integrale derivativo saturazione isteresi ritardo predizione stima filtro kalman identificazione minimi quadrati ottimizzazione vincolo obiettivo costo energia potenza efficienza affidabilità resilienza robustezza incertezza disturbo sensibilità banda passante risonanza picco smorzato naturale forzata libera eccitazione ingresso uscita stato retroazione unità gradino rampa impulso parabolico traiettoria inseguimento riferimento setpoint errore inseguimento precisione accuratezza risoluzione campionatore mantenitore ordine zero primo ricostruzione segnale aliasing nyquist shannon teorema campionamento stabilità ingresso-uscita bibo lyapunov energia dissipativa passività causalità invarianza temporale tempo-variante non lineare caotico frattale rete neurale apprendimento supervisionato rinforzo profondo regressione classificazione clusterizzazione neurone sinapsi peso bias attivazione gradiente backpropagation epoca batch loss optimizer adam sgd dropout normalizzazione regolarizzazione overfitting underfitting validazione cross-validation test set training set iperparametro architettura layer convoluzionale ricorrente trasformatore attenzione encoder decoder sequenza linguaggio naturale visione artificiale elaborazione immagini segmentazione detezione oggetti tracciamento realtà aumentata virtuale mista interfaccia uomo-macchina usabilità accessibilità prototipo sviluppo agile scrum kanban sprint backlog user story testing unitario integrazione sistema accettazione deploy pipeline ci-cd docker kubernetes cloud serverless microservizi api rest graphql database sql nosql transazione acid cap teorema sharding replicazione consistenza disponibilità partizionamento sicurezza crittografia autenticazione autorizzazione token jwt oauth2 ssl tls firewall malware phishing attacco ddos vulnerabilità patch aggiornamento manutenzione documentazione commento codice pulito refactoring debito tecnico architettura esagonale clean architecture solid principi design pattern singleton factory observer strategy decorator adapter proxy bridge facade memento state command iterator visitor template method chain of responsibility mediator flyweight interpreter";
         const baseWords = text.split(" ");
-        const words = Array.from({ length: 750 }, (_, i) => `${baseWords[i % baseWords.length]}_${i + 1}`);
+        // Map allows O(1) lookup from word string to Blob ID
+        const wordMap = new Map();
 
+        // 2. BLOB CLASS
         class Blob {
             constructor(id, word, x, y, radius, hue, scene, geo, matBase) {
-                this.id = id; this.word = word; this.pos = new THREE.Vector2(x, y);
+                this.id = id; 
+                this.word = word.split('_')[0]; // Clean word
+                this.pos = new THREE.Vector2(x, y);
                 this.vel = new THREE.Vector2(0, 0); 
-                this.baseRadius = radius; // 18
-                this.radius = radius; 
-                this.targetRadius = radius;
-                this.mass = radius * radius;
+                
+                // Token Economy Props
+                this.baseRadius = 15;
+                this.tokens = 1; // Start with 1 token
+                this.targetRadius = this.baseRadius;
+                this.radius = this.baseRadius;
+                
+                this.mass = this.radius * this.radius;
                 
                 this.material = matBase.clone();
                 this.material.uniforms.uColor.value.setHSL(hue/360, 0.65, 0.55);
                 this.material.uniforms.uSeed.value = Math.random() * 100.0;
                 this.material.uniforms.uTime = { value: 0 };
                 this.material.uniforms.uSelected = { value: 0 };
+                this.material.uniforms.uIntensity = { value: 0 };
 
                 this.mesh = new THREE.Mesh(geo, this.material);
                 this.mesh.userData.parent = this;
                 scene.add(this.mesh);
             }
+            
+            // Called when a user "invests" a token here
+            addToken() {
+                this.tokens++;
+                this.recalcTarget();
+            }
+
+            // Called when a user "leaves" for another topic
+            removeToken() {
+                if(this.tokens > 1) this.tokens--;
+                this.recalcTarget();
+            }
+
+            recalcTarget() {
+                // Area is proportional to tokens. 
+                // Formula: Radius = Base * sqrt(tokens)
+                // This makes the first few tokens very impactful, but diminishes later (Square Root Law)
+                this.targetRadius = this.baseRadius * Math.sqrt(this.tokens * 0.8);
+                
+                // Visual heat indicator
+                this.material.uniforms.uIntensity.value = Math.min(this.tokens / 20.0, 1.0);
+            }
+
             setSelected(state) {
                 this.material.uniforms.uSelected.value = state ? 1 : 0;
                 this.mesh.renderOrder = state ? 1 : 0;
             }
+
             update(fric, settle, vW, vH, time) {
+                // Smoothly interpolate current radius to target
                 this.radius += (this.targetRadius - this.radius) * settle;
                 this.mass = this.radius * this.radius;
-                this.pos.add(this.vel); this.vel.multiplyScalar(fric);
+                
+                this.pos.add(this.vel); 
+                this.vel.multiplyScalar(fric);
                 this.material.uniforms.uTime.value = time;
 
+                // Bounds
                 const margin = this.radius * 0.8;
                 if (this.pos.x < -vW/2 + margin) this.vel.x += 0.25;
                 if (this.pos.x >  vW/2 - margin) this.vel.x -= 0.25;
                 if (this.pos.y < -vH/2 + margin) this.vel.y += 0.25;
                 if (this.pos.y >  vH/2 - margin) this.vel.y -= 0.25;
-                if (this.vel.lengthSq() < 0.0001) this.vel.set(0,0);
             }
-            pop() {
-                // Calculate how far we are from the base size
-                const deviation = Math.abs(this.targetRadius - this.baseRadius);
-                
-                // Exponentially dampen the change based on distance from base
-                // The further away, the smaller the possible 'jump'
-                // A higher value (0.15) makes the "rubber band" 10x tighter
-const dampening = Math.exp(-deviation * 0.15);
-                
-                const rawChange = (Math.random() * 60 + 20) * dampening;
-                const dir = Math.random() > 0.5 ? 1 : -1;
-                
-                // If extremely large/small, bias the direction back to center
-                let finalDir = dir;
-                if (this.targetRadius > 100) finalDir = -1;
-                if (this.targetRadius < 10) finalDir = 1;
 
-                this.targetRadius += rawChange * finalDir;
-                
-                // Hard boundaries
-                this.targetRadius = THREE.MathUtils.clamp(this.targetRadius, 5, 180);
+            draw() { 
+                const d = this.radius * 2.6; 
+                this.mesh.scale.set(d, d, 1); 
+                this.mesh.position.set(this.pos.x, this.pos.y, 0); 
             }
-            draw() { const d = this.radius * 2.6; this.mesh.scale.set(d, d, 1); this.mesh.position.set(this.pos.x, this.pos.y, 0); }
         }
 
+        // 3. MAIN APP
         class App {
             constructor() {
-                this.config = { count: 750, friction: 0.14, repulsion: 0.65, settleSpeed: 0.1, zoomIn: 480, zoomOut: 1300 };
-                this.blobs = []; this.targetZoom = this.config.zoomIn; this.currentZoom = this.config.zoomIn;
-                this.cameraOffset = new THREE.Vector2(0, 0); this.isPanning = false; this.lbFull = false;
+                this.config = { 
+                    count: 750, 
+                    agentCount: 2000, // Total Tokens in circulation
+                    friction: 0.14, 
+                    repulsion: 0.65, 
+                    settleSpeed: 0.05, 
+                    zoomIn: 480, 
+                    zoomOut: 1300 
+                };
+                
+                this.blobs = []; 
+                this.agents = []; // Array of ints, where agents[i] = blobID they are watching
+                this.tokenMovesPerSec = 0;
+                
+                this.targetZoom = this.config.zoomIn; 
+                this.currentZoom = this.config.zoomIn;
+                this.cameraOffset = new THREE.Vector2(0, 0); 
+                this.isPanning = false; 
+                this.lbFull = false;
                 this.selectedBlob = null;
 
-                this.initScene(); this.initBlobs(); this.bindEvents(); this.animate();
+                this.initScene(); 
+                this.initBlobs(); 
+                this.initAgents();
+                this.bindEvents(); 
+                this.animate();
+                
+                // Stats ticker
+                setInterval(() => {
+                    document.getElementById('flow-rate').innerText = this.tokenMovesPerSec;
+                    this.tokenMovesPerSec = 0;
+                    this.updateUI();
+                }, 1000);
             }
 
             initScene() {
@@ -184,20 +268,141 @@ const dampening = Math.exp(-deviation * 0.15);
             initBlobs() {
                 const geo = new THREE.PlaneGeometry(1, 1);
                 const mat = new THREE.ShaderMaterial({
-                    uniforms: { uColor: { value: new THREE.Color() }, uSeed: { value: 0 }, uTime: { value: 0 }, uSelected: { value: 0 } },
+                    uniforms: { uColor: { value: new THREE.Color() }, uSeed: { value: 0 }, uTime: { value: 0 }, uSelected: { value: 0 }, uIntensity: { value: 0 } },
                     vertexShader: document.getElementById('vertexshader').textContent,
                     fragmentShader: document.getElementById('fragmentshader').textContent,
                     transparent: true, depthTest: false
                 });
+                
                 const aspect = window.innerWidth / window.innerHeight;
                 const cols = Math.floor(Math.sqrt(this.config.count * aspect));
                 const spacing = (this.config.zoomOut * aspect) / cols;
+                
+                // Generate Blobs
+                const uniqueWords = [...new Set(baseWords)]; // Ensure unique for mapping
+                
                 for(let i = 0; i < this.config.count; i++) {
                     const r = Math.floor(i / cols), c = i % cols;
                     const x = (c - cols/2) * spacing + (Math.random()-0.5)*10;
                     const y = (r - (this.config.count/cols)/2) * spacing + (Math.random()-0.5)*10;
-                    this.blobs.push(new Blob(i, words[i], x, y, 18, Math.random() * 360, this.scene, geo, mat));
+                    
+                    // Cycle through words list
+                    const word = uniqueWords[i % uniqueWords.length];
+                    const blob = new Blob(i, word, x, y, 15, Math.random() * 360, this.scene, geo, mat);
+                    
+                    this.blobs.push(blob);
+                    
+                    // Populate Map for O(1) API lookups
+                    if (!wordMap.has(word)) wordMap.set(word, []);
+                    wordMap.get(word).push(blob);
                 }
+            }
+
+            initAgents() {
+                // Distribute agents randomly initially
+                for(let i=0; i<this.config.agentCount; i++) {
+                    const randomBlobIndex = Math.floor(Math.random() * this.blobs.length);
+                    this.agents.push(randomBlobIndex);
+                    this.blobs[randomBlobIndex].addToken();
+                }
+            }
+
+            // --- THE CORE LOGIC: MOVING ATTENTION ---
+            shiftAttention(targetWord, amountOfAgents) {
+                const targets = wordMap.get(targetWord);
+                if(!targets) return;
+
+                // We pick the first matching blob for this word (or random if multiple)
+                const targetBlob = targets[0]; 
+
+                for(let k=0; k<amountOfAgents; k++) {
+                    // 1. Pick a random agent
+                    const agentIndex = Math.floor(Math.random() * this.agents.length);
+                    const oldBlobId = this.agents[agentIndex];
+
+                    // 2. Only move if they aren't already there
+                    if(oldBlobId !== targetBlob.id) {
+                        // 3. Remove token from old topic (it shrinks)
+                        this.blobs[oldBlobId].removeToken();
+
+                        // 4. Move agent to new topic
+                        this.agents[agentIndex] = targetBlob.id;
+
+                        // 5. Add token to new topic (it grows)
+                        targetBlob.addToken();
+                        
+                        this.tokenMovesPerSec++;
+                    }
+                }
+            }
+
+            // --- MASTODON INTEGRATION ---
+            connectToMastodon(token) {
+                const statusDot = document.getElementById('connection-dot');
+                const ticker = document.getElementById('ticker');
+                
+                statusDot.style.background = "orange";
+                ticker.style.opacity = 1;
+                ticker.innerText = "Connecting to Mastodon Public Stream...";
+
+                const streamUrl = `https://streaming.mastodon.social/api/v1/streaming/public?access_token=${token}`;
+                
+                // Using standard EventSource (Native Browser API)
+                const es = new EventSource(streamUrl);
+
+                es.onopen = () => {
+                    statusDot.style.background = "#0f0";
+                    ticker.innerText = "Connected! Listening for keywords...";
+                };
+
+                es.addEventListener('update', (event) => {
+                    const data = JSON.parse(event.data);
+                    const content = data.content.toLowerCase();
+                    
+                    // Simple HTML strip
+                    const cleanText = content.replace(/<[^>]*>?/gm, '');
+                    
+                    // Display snippet
+                    ticker.innerText = `Stream: ${cleanText.substring(0, 80)}...`;
+
+                    // Check for Keywords
+                    // Optimization: We iterate our words? Or iterate the text words?
+                    // Iterating text words is faster (shorter)
+                    const tokens = cleanText.split(/[\s,.]+/);
+                    
+                    tokens.forEach(t => {
+                        if(wordMap.has(t)) {
+                            // MATCH FOUND! 
+                            // Move 5 agents to this topic
+                            this.shiftAttention(t, 5);
+                        }
+                    });
+                });
+
+                es.onerror = (err) => {
+                    statusDot.style.background = "red";
+                    ticker.innerText = "Connection Error (Check Token)";
+                    es.close();
+                };
+            }
+
+            startSimulation() {
+                const ticker = document.getElementById('ticker');
+                ticker.style.opacity = 1;
+                document.getElementById('connection-dot').style.background = "cyan";
+                
+                // Simulation Loop
+                setInterval(() => {
+                    // Pick a random word from our list to simulate a "Trend"
+                    const randomBlob = this.blobs[Math.floor(Math.random() * this.blobs.length)];
+                    const word = randomBlob.word;
+                    
+                    ticker.innerText = `Simulated Trend: "${word}" is spiking!`;
+                    
+                    // Simulate a huge spike (20 posts about it)
+                    this.shiftAttention(word, 50);
+                    
+                }, 200); // Every 200ms
             }
 
             bindEvents() {
@@ -209,8 +414,18 @@ const dampening = Math.exp(-deviation * 0.15);
                     this.lbFull = !this.lbFull;
                     document.getElementById('lb-toggle').innerText = this.lbFull ? "Show Top 10" : "Show Full List";
                 };
-                document.getElementById('search-go').onclick = () => this.search();
-                document.getElementById('search-input').onkeydown = (e) => { if(e.key === "Enter") this.search(); };
+                
+                // API Buttons
+                document.getElementById('btn-connect').onclick = () => {
+                    const token = document.getElementById('api-token').value;
+                    if(token) this.connectToMastodon(token);
+                    else alert("Please paste a token first!");
+                };
+                
+                document.getElementById('btn-simulate').onclick = () => {
+                    this.startSimulation();
+                };
+
                 window.addEventListener('mousedown', (e) => this.onMouseDown(e));
                 window.addEventListener('mousemove', (e) => this.onMouseMove(e));
                 window.addEventListener('mouseup', () => this.isPanning = false);
@@ -225,12 +440,6 @@ const dampening = Math.exp(-deviation * 0.15);
                 this.cameraOffset.copy(blob.pos);
             }
 
-            search() {
-                const q = document.getElementById('search-input').value.toLowerCase();
-                const b = this.blobs.find(x => x.word.toLowerCase() === q || x.word.toLowerCase().includes(q));
-                this.selectBlob(b);
-            }
-
             onMouseDown(e) {
                 if (e.target.closest('.interactive')) return;
                 if (this.targetZoom === this.config.zoomOut) {
@@ -242,9 +451,6 @@ const dampening = Math.exp(-deviation * 0.15);
                 const hits = ray.intersectObjects(this.scene.children);
                 if(hits.length > 0) {
                     this.selectBlob(hits[0].object.userData.parent);
-                } else {
-                    if(this.selectedBlob) this.selectedBlob.setSelected(false);
-                    this.selectedBlob = null;
                 }
             }
 
@@ -274,12 +480,13 @@ const dampening = Math.exp(-deviation * 0.15);
             }
 
             updateUI() {
-                const sorted = [...this.blobs].sort((a,b) => b.radius - a.radius);
+                // Sort by TOKEN COUNT, not just radius
+                const sorted = [...this.blobs].sort((a,b) => b.tokens - a.tokens);
                 const list = this.lbFull ? sorted.slice(0, 50) : sorted.slice(0, 10);
                 document.getElementById('lb-content').innerHTML = list.map((b) => `
                     <div class="lb-item" onclick="window.app.selectBlob(window.app.blobs[${b.id}])">
-                        <span style="${this.selectedBlob?.id === b.id ? 'font-weight:bold; color:#2196F3;' : ''}">${b.word.split('_')[0]}</span>
-                        <span style="opacity:0.5">${Math.round(b.radius)}</span>
+                        <span style="${this.selectedBlob?.id === b.id ? 'font-weight:bold; color:#2196F3;' : ''}">${b.word}</span>
+                        <span style="opacity:0.5">${b.tokens} 🪙</span>
                     </div>
                 `).join('');
             }
@@ -298,12 +505,6 @@ const dampening = Math.exp(-deviation * 0.15);
                 this.resolvePhysics();
                 this.blobs.forEach(b => b.draw());
 
-                // Triggers roughly once every 2-3 frames (10x less than before)
-if(Math.random() < 0.4) {
-    this.blobs[Math.floor(Math.random() * this.config.count)].pop();
-}
-
-                if(Math.floor(performance.now() / 1000) % 2 === 0) this.updateUI();
                 this.renderer.render(this.scene, this.camera);
             }
         }

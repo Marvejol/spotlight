@@ -338,52 +338,77 @@
             }
 
             // --- MASTODON INTEGRATION ---
+            // --- MASTODON INTEGRATION (FIXED: Uses WebSocket instead of EventSource) ---
             connectToMastodon(token) {
                 const statusDot = document.getElementById('connection-dot');
                 const ticker = document.getElementById('ticker');
                 
+                // 1. Close existing connection if user clicks button again
+                if (this.socket) {
+                    this.socket.close();
+                }
+
                 statusDot.style.background = "orange";
                 ticker.style.opacity = 1;
-                ticker.innerText = "Connecting to Mastodon Public Stream...";
+                ticker.innerText = "Connecting via WebSocket...";
 
-                const streamUrl = `https://streaming.mastodon.social/api/v1/streaming/public?access_token=${token}`;
+                // 2. Use WebSocket URL (wss://) with the 'public' stream parameter
+                // Note: The public timeline on mastodon.social is VERY fast. 
+                // If it lags, change 'stream=public' to 'stream=public:local' or 'stream=hashtag&tag=tech'
+                const streamUrl = `wss://streaming.mastodon.social/api/v1/streaming?stream=public&access_token=${token}`;
                 
-                // Using standard EventSource (Native Browser API)
-                const es = new EventSource(streamUrl);
+                this.socket = new WebSocket(streamUrl);
 
-                es.onopen = () => {
+                this.socket.onopen = () => {
                     statusDot.style.background = "#0f0";
                     ticker.innerText = "Connected! Listening for keywords...";
                 };
 
-                es.addEventListener('update', (event) => {
-                    const data = JSON.parse(event.data);
-                    const content = data.content.toLowerCase();
-                    
-                    // Simple HTML strip
-                    const cleanText = content.replace(/<[^>]*>?/gm, '');
-                    
-                    // Display snippet
-                    ticker.innerText = `Stream: ${cleanText.substring(0, 80)}...`;
+                this.socket.onmessage = (event) => {
+                    try {
+                        // 3. WebSocket messages are wrapped in an envelope
+                        const message = JSON.parse(event.data);
+                        
+                        // We only care about 'update' events (new posts)
+                        if (message.event === 'update') {
+                            // The actual post data is inside 'payload' as a JSON string
+                            const data = JSON.parse(message.payload);
+                            const content = data.content.toLowerCase();
+                            
+                            // Simple HTML strip
+                            const cleanText = content.replace(/<[^>]*>?/gm, '');
+                            
+                            // Display snippet
+                            ticker.innerText = `Stream: ${cleanText.substring(0, 80)}...`;
 
-                    // Check for Keywords
-                    // Optimization: We iterate our words? Or iterate the text words?
-                    // Iterating text words is faster (shorter)
-                    const tokens = cleanText.split(/[\s,.]+/);
-                    
-                    tokens.forEach(t => {
-                        if(wordMap.has(t)) {
-                            // MATCH FOUND! 
-                            // Move 5 agents to this topic
-                            this.shiftAttention(t, 5);
+                            // Check for Keywords
+                            const tokens = cleanText.split(/[\s,.]+/);
+                            
+                            tokens.forEach(t => {
+                                if(wordMap.has(t)) {
+                                    // MATCH FOUND! 
+                                    // Move 5 agents to this topic
+                                    this.shiftAttention(t, 5);
+                                }
+                            });
                         }
-                    });
-                });
+                    } catch (err) {
+                        console.error("Stream Parse Error:", err);
+                    }
+                };
 
-                es.onerror = (err) => {
+                this.socket.onerror = (err) => {
+                    console.error("WebSocket Error:", err);
                     statusDot.style.background = "red";
                     ticker.innerText = "Connection Error (Check Token)";
-                    es.close();
+                };
+                
+                this.socket.onclose = () => {
+                     // If it closes unexpectedly (not by our hand), show orange
+                     if(statusDot.style.background === "rgb(0, 255, 0)") {
+                        statusDot.style.background = "orange";
+                        ticker.innerText = "Connection Closed.";
+                     }
                 };
             }
 

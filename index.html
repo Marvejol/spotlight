@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mosaic Fuego - Attention Economy</title>
+    <title>Mosaic Fuego - Attention Economy (Debug Mode)</title>
     <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
     <script type="importmap">
     {
@@ -241,6 +241,7 @@
                 this.isPanning = false; 
                 this.lbFull = false;
                 this.selectedBlob = null;
+                this.socket = null; // WebSocket holder
 
                 this.initScene(); 
                 this.initBlobs(); 
@@ -280,14 +281,13 @@
                 const spacing = (this.config.zoomOut * aspect) / cols;
                 
                 // Generate Blobs
-                const uniqueWords = [...new Set(baseWords)]; // Ensure unique for mapping
+                const uniqueWords = [...new Set(baseWords)]; 
                 
                 for(let i = 0; i < this.config.count; i++) {
                     const r = Math.floor(i / cols), c = i % cols;
                     const x = (c - cols/2) * spacing + (Math.random()-0.5)*10;
                     const y = (r - (this.config.count/cols)/2) * spacing + (Math.random()-0.5)*10;
                     
-                    // Cycle through words list
                     const word = uniqueWords[i % uniqueWords.length];
                     const blob = new Blob(i, word, x, y, 15, Math.random() * 360, this.scene, geo, mat);
                     
@@ -300,7 +300,6 @@
             }
 
             initAgents() {
-                // Distribute agents randomly initially
                 for(let i=0; i<this.config.agentCount; i++) {
                     const randomBlobIndex = Math.floor(Math.random() * this.blobs.length);
                     this.agents.push(randomBlobIndex);
@@ -313,38 +312,29 @@
                 const targets = wordMap.get(targetWord);
                 if(!targets) return;
 
-                // We pick the first matching blob for this word (or random if multiple)
                 const targetBlob = targets[0]; 
 
                 for(let k=0; k<amountOfAgents; k++) {
-                    // 1. Pick a random agent
                     const agentIndex = Math.floor(Math.random() * this.agents.length);
                     const oldBlobId = this.agents[agentIndex];
 
-                    // 2. Only move if they aren't already there
                     if(oldBlobId !== targetBlob.id) {
-                        // 3. Remove token from old topic (it shrinks)
                         this.blobs[oldBlobId].removeToken();
-
-                        // 4. Move agent to new topic
                         this.agents[agentIndex] = targetBlob.id;
-
-                        // 5. Add token to new topic (it grows)
                         targetBlob.addToken();
-                        
                         this.tokenMovesPerSec++;
                     }
                 }
             }
 
-            // --- MASTODON INTEGRATION ---
-            // --- MASTODON INTEGRATION (FIXED: Uses WebSocket instead of EventSource) ---
+            // --- MASTODON INTEGRATION (FIXED: Websockets + Debugging) ---
             connectToMastodon(token) {
+                console.log("%c Starting Mastodon Connection Sequence...", "color: orange; font-weight:bold;");
                 const statusDot = document.getElementById('connection-dot');
                 const ticker = document.getElementById('ticker');
                 
-                // 1. Close existing connection if user clicks button again
                 if (this.socket) {
+                    console.log("Closing previous WebSocket connection...");
                     this.socket.close();
                 }
 
@@ -352,60 +342,85 @@
                 ticker.style.opacity = 1;
                 ticker.innerText = "Connecting via WebSocket...";
 
-                // 2. Use WebSocket URL (wss://) with the 'public' stream parameter
-                // Note: The public timeline on mastodon.social is VERY fast. 
-                // If it lags, change 'stream=public' to 'stream=public:local' or 'stream=hashtag&tag=tech'
+                // We use the "public" stream. 
+                // NOTE: This can be very fast (firehose).
                 const streamUrl = `wss://streaming.mastodon.social/api/v1/streaming?stream=public&access_token=${token}`;
                 
-                this.socket = new WebSocket(streamUrl);
+                console.log(`Endpoint: wss://streaming.mastodon.social/api/v1/streaming?stream=public&access_token=...[HIDDEN]`);
+
+                try {
+                    this.socket = new WebSocket(streamUrl);
+                } catch(e) {
+                    console.error("FATAL: WebSocket construction failed", e);
+                    ticker.innerText = "WebSocket Error (See Console)";
+                    statusDot.style.background = "red";
+                    return;
+                }
 
                 this.socket.onopen = () => {
+                    console.log("%c WebSocket Connection ESTABLISHED", "color: green; font-weight:bold;");
                     statusDot.style.background = "#0f0";
-                    ticker.innerText = "Connected! Listening for keywords...";
+                    ticker.innerText = "Connected! Waiting for data...";
                 };
 
                 this.socket.onmessage = (event) => {
+                    // Debug: Log that we got something (comment out if too noisy)
+                    // console.log("Message received, length:", event.data.length);
+
                     try {
-                        // 3. WebSocket messages are wrapped in an envelope
                         const message = JSON.parse(event.data);
                         
-                        // We only care about 'update' events (new posts)
+                        // Mastodon sends { event: "update", payload: "JSON_STRING" }
                         if (message.event === 'update') {
-                            // The actual post data is inside 'payload' as a JSON string
-                            const data = JSON.parse(message.payload);
-                            const content = data.content.toLowerCase();
+                            // console.log("Processing 'update' event...");
                             
-                            // Simple HTML strip
+                            const payload = JSON.parse(message.payload);
+                            const content = payload.content; // HTML string
+                            
+                            // Strip HTML
                             const cleanText = content.replace(/<[^>]*>?/gm, '');
-                            
-                            // Display snippet
+                            const lowerText = cleanText.toLowerCase();
+
+                            // Update Ticker (Throttle visually if needed, but here we update every time)
                             ticker.innerText = `Stream: ${cleanText.substring(0, 80)}...`;
 
-                            // Check for Keywords
-                            const tokens = cleanText.split(/[\s,.]+/);
-                            
+                            // Tokenize
+                            const tokens = lowerText.split(/[\s,.]+/);
+                            let matches = 0;
+
                             tokens.forEach(t => {
                                 if(wordMap.has(t)) {
-                                    // MATCH FOUND! 
-                                    // Move 5 agents to this topic
-                                    this.shiftAttention(t, 5);
+                                    // MATCH!
+                                    console.log(`%c MATCH FOUND: ${t}`, "color: cyan");
+                                    this.shiftAttention(t, 5); // Move 5 agents per mention
+                                    matches++;
                                 }
                             });
+                            
+                            if(matches > 0) console.log(`> Shifted attention for ${matches} keywords.`);
+                        } 
+                        else if (message.event === 'delete') {
+                            // console.log("Delete event received (ignoring)");
+                        } 
+                        else {
+                            console.log("Unknown event type:", message.event);
                         }
+
                     } catch (err) {
-                        console.error("Stream Parse Error:", err);
+                        console.error("Parse Error:", err);
+                        console.log("Bad Data:", event.data);
                     }
                 };
 
                 this.socket.onerror = (err) => {
                     console.error("WebSocket Error:", err);
                     statusDot.style.background = "red";
-                    ticker.innerText = "Connection Error (Check Token)";
+                    ticker.innerText = "Connection Error (Check Console)";
                 };
                 
-                this.socket.onclose = () => {
-                     // If it closes unexpectedly (not by our hand), show orange
-                     if(statusDot.style.background === "rgb(0, 255, 0)") {
+                this.socket.onclose = (event) => {
+                    console.warn(`WebSocket Closed. Code: ${event.code}, Reason: ${event.reason}`);
+                     if(statusDot.style.background !== "red") {
                         statusDot.style.background = "orange";
                         ticker.innerText = "Connection Closed.";
                      }
@@ -416,19 +431,14 @@
                 const ticker = document.getElementById('ticker');
                 ticker.style.opacity = 1;
                 document.getElementById('connection-dot').style.background = "cyan";
+                console.log("Starting Simulation Mode...");
                 
-                // Simulation Loop
                 setInterval(() => {
-                    // Pick a random word from our list to simulate a "Trend"
                     const randomBlob = this.blobs[Math.floor(Math.random() * this.blobs.length)];
                     const word = randomBlob.word;
-                    
                     ticker.innerText = `Simulated Trend: "${word}" is spiking!`;
-                    
-                    // Simulate a huge spike (20 posts about it)
                     this.shiftAttention(word, 50);
-                    
-                }, 200); // Every 200ms
+                }, 200);
             }
 
             bindEvents() {
@@ -443,7 +453,7 @@
                 
                 // API Buttons
                 document.getElementById('btn-connect').onclick = () => {
-                    const token = document.getElementById('api-token').value;
+                    const token = document.getElementById('api-token').value.trim();
                     if(token) this.connectToMastodon(token);
                     else alert("Please paste a token first!");
                 };
@@ -506,7 +516,6 @@
             }
 
             updateUI() {
-                // Sort by TOKEN COUNT, not just radius
                 const sorted = [...this.blobs].sort((a,b) => b.tokens - a.tokens);
                 const list = this.lbFull ? sorted.slice(0, 50) : sorted.slice(0, 10);
                 document.getElementById('lb-content').innerHTML = list.map((b) => `

@@ -328,102 +328,85 @@
             }
 
             // --- MASTODON INTEGRATION (FIXED: Websockets + Debugging) ---
+            // --- MASTODON INTEGRATION (HOTSPOT FRIENDLY MODE) ---
             connectToMastodon(token) {
-                console.log("%c Starting Mastodon Connection Sequence...", "color: orange; font-weight:bold;");
+                console.log("%c Starting Hotspot-Optimized Connection...", "color: orange; font-weight:bold;");
                 const statusDot = document.getElementById('connection-dot');
                 const ticker = document.getElementById('ticker');
                 
                 if (this.socket) {
-                    console.log("Closing previous WebSocket connection...");
                     this.socket.close();
                 }
 
                 statusDot.style.background = "orange";
                 ticker.style.opacity = 1;
-                ticker.innerText = "Connecting via WebSocket...";
+                // We will search for 'tech' to ensure we get SOME data, but not TOO much
+                ticker.innerText = "Connecting to 'tech' tag (Low Bandwidth)...";
 
-                // We use the "public" stream. 
-                // NOTE: This can be very fast (firehose).
-                const streamUrl = `wss://streaming.mastodon.social/api/v1/streaming?stream=public&access_token=${token}`;
+                // CRITICAL CHANGE: 
+                // 1. Used 'stream=hashtag' instead of 'public'
+                // 2. Added 'tag=tech' (you can change this to 'news' or 'art')
+                const streamUrl = `wss://streaming.mastodon.social/api/v1/streaming?stream=hashtag&tag=tech&access_token=${token}`;
                 
-                console.log(`Endpoint: wss://streaming.mastodon.social/api/v1/streaming?stream=public&access_token=...[HIDDEN]`);
+                console.log(`Connecting to: wss://streaming.mastodon.social/api/v1/streaming?stream=hashtag&tag=tech...`);
 
                 try {
                     this.socket = new WebSocket(streamUrl);
                 } catch(e) {
-                    console.error("FATAL: WebSocket construction failed", e);
-                    ticker.innerText = "WebSocket Error (See Console)";
+                    console.error("WebSocket construction failed", e);
+                    ticker.innerText = "Error: Blocked by Browser/Network";
                     statusDot.style.background = "red";
                     return;
                 }
 
                 this.socket.onopen = () => {
-                    console.log("%c WebSocket Connection ESTABLISHED", "color: green; font-weight:bold;");
+                    console.log("%c Connection OPEN", "color: green");
                     statusDot.style.background = "#0f0";
-                    ticker.innerText = "Connected! Waiting for data...";
+                    ticker.innerText = "Connected! Waiting for 'tech' posts...";
                 };
 
                 this.socket.onmessage = (event) => {
-                    // Debug: Log that we got something (comment out if too noisy)
-                    // console.log("Message received, length:", event.data.length);
-
                     try {
-                        const message = JSON.parse(event.data);
-                        
-                        // Mastodon sends { event: "update", payload: "JSON_STRING" }
-                        if (message.event === 'update') {
-                            // console.log("Processing 'update' event...");
-                            
-                            const payload = JSON.parse(message.payload);
-                            const content = payload.content; // HTML string
-                            
-                            // Strip HTML
-                            const cleanText = content.replace(/<[^>]*>?/gm, '');
-                            const lowerText = cleanText.toLowerCase();
-
-                            // Update Ticker (Throttle visually if needed, but here we update every time)
-                            ticker.innerText = `Stream: ${cleanText.substring(0, 80)}...`;
-
-                            // Tokenize
-                            const tokens = lowerText.split(/[\s,.]+/);
-                            let matches = 0;
-
-                            tokens.forEach(t => {
-                                if(wordMap.has(t)) {
-                                    // MATCH!
-                                    console.log(`%c MATCH FOUND: ${t}`, "color: cyan");
-                                    this.shiftAttention(t, 5); // Move 5 agents per mention
-                                    matches++;
-                                }
-                            });
-                            
-                            if(matches > 0) console.log(`> Shifted attention for ${matches} keywords.`);
-                        } 
-                        else if (message.event === 'delete') {
-                            // console.log("Delete event received (ignoring)");
-                        } 
-                        else {
-                            console.log("Unknown event type:", message.event);
+                        // Heartbeat check (empty data means server is keeping connection alive)
+                        if (event.data === '') {
+                             console.log("❤️ Heartbeat received");
+                             return;
                         }
 
+                        const message = JSON.parse(event.data);
+                        
+                        // Valid data?
+                        if (message.event === 'update') {
+                            const payload = JSON.parse(message.payload);
+                            const cleanText = payload.content.replace(/<[^>]*>?/gm, '').toLowerCase();
+
+                            // Update UI
+                            ticker.innerText = `Stream: ${cleanText.substring(0, 80)}...`;
+
+                            // Check Keywords
+                            const tokens = cleanText.split(/[\s,.]+/);
+                            tokens.forEach(t => {
+                                if(wordMap.has(t)) {
+                                    console.log(`MATCH: ${t}`);
+                                    this.shiftAttention(t, 5); 
+                                }
+                            });
+                        }
                     } catch (err) {
-                        console.error("Parse Error:", err);
-                        console.log("Bad Data:", event.data);
+                        // Ignore parse errors, they happen
                     }
                 };
 
                 this.socket.onerror = (err) => {
-                    console.error("WebSocket Error:", err);
+                    console.error("Socket Error:", err);
                     statusDot.style.background = "red";
-                    ticker.innerText = "Connection Error (Check Console)";
+                    ticker.innerText = "Network Error (Hotspot/Firewall)";
                 };
                 
                 this.socket.onclose = (event) => {
-                    console.warn(`WebSocket Closed. Code: ${event.code}, Reason: ${event.reason}`);
-                     if(statusDot.style.background !== "red") {
-                        statusDot.style.background = "orange";
-                        ticker.innerText = "Connection Closed.";
-                     }
+                    console.warn(`Closed. Code: ${event.code}`);
+                    statusDot.style.background = "orange";
+                    ticker.innerText = "Connection Dropped (Likely Signal/Timeout)";
                 };
             }
 

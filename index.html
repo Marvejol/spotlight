@@ -7,7 +7,7 @@
     
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,200;0,600;0,900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=League+Spartan:wght@900&display=swap" rel="stylesheet">
     
     <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
     <script type="importmap">
@@ -52,7 +52,7 @@
         
         #zoomToggle { position: absolute; top: 20px; right: 20px; border-radius: 20px; font-size: 11px; padding: 8px 16px;}
 
-        /* --- MAXIMALIST TEXT OVERLAY SYSTEM --- */
+        /* --- UPDATED TEXT OVERLAY SYSTEM --- */
         #labels-layer {
             position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
             pointer-events: none; overflow: hidden; z-index: 50;
@@ -61,59 +61,27 @@
         /* Base container tracks the 3D blob position */
         .blob-label-container {
             position: absolute; top: 0; left: 0;
-            width: 0; height: 0; /* Centered exactly on the coordinate */
+            width: 0; height: 0;
             display: flex; align-items: center; justify-content: center;
             will-change: transform;
             user-select: none;
         }
 
-        /* Generic shared properties for the text layers */
-        .maxi-label {
+        /* The bold, solid text matching the screenshot */
+        .blob-label {
             position: absolute;
-            color: #fff;
-            font-family: "Poppins", sans-serif;
+            font-family: "League Spartan", sans-serif;
+            font-weight: 900; /* Extra bold */
             line-height: 1;
             white-space: nowrap;
-            letter-spacing: -0.04em; /* Tight kerning for impact */
-            text-transform: uppercase;
+            letter-spacing: -0.06em; /* Tight kerning */
+            text-transform: uppercase; /* All caps */
             text-align: center;
-        }
-
-        /* Outer layer: Faint, massive texture bleeding to the edges */
-        .maxi-label-outer {
-            font-weight: 200; 
-            opacity: 0.15;
-            font-size: 4em; /* Scaled relative to the container */
-            transform: rotate(-5deg);
-        }
-
-        /* Middle layer: Medium density, angled differently */
-        .maxi-label-mid {
-            font-weight: 600; 
-            opacity: 0.25;
-            font-size: 2.5em; 
-            transform: rotate(8deg);
-        }
-
-        /* Inner layer: The clear, comprehensible focal point */
-        .maxi-label-inner {
-            opacity: 1.0;
-            font-weight: 900;
-            font-size: 1.2em; 
             z-index: 10;
-            text-shadow: 0 4px 12px rgba(0,0,0,0.5); 
-            color: #fff;
         }
 
-        /* Special flair for the main Topics to make them pop */
-        .blob-label-container.is-topic .maxi-label-inner {
-            color: #fff9e6;
-            font-style: italic; 
-            text-shadow: 0 6px 20px rgba(255, 100, 100, 0.8), 0 0 10px rgba(255, 255, 255, 0.3);
-            font-size: 1.5em;
-        }
-        .blob-label-container.is-topic .maxi-label-outer {
-            opacity: 0.25; /* Slightly more visible background for topics */
+        .blob-label-container.is-topic .blob-label {
+            font-size: 1.2em; /* Topics are just slightly larger */
         }
     </style>
 </head>
@@ -206,9 +174,12 @@
                 this.radius = 0.1; 
                 this.mass = this.radius * this.radius;
                 
-                // WebGL Setup
+                // WebGL Setup - Generate dynamic color
                 this.material = matBase.clone();
-                this.material.uniforms.uColor.value.setHSL(Math.random(), 0.7, 0.5);
+                const hue = Math.random();
+                
+                // Set the 3D blob color (lighter base)
+                this.material.uniforms.uColor.value.setHSL(hue, 0.6, 0.6);
                 this.material.uniforms.uSeed.value = Math.random() * 100.0;
                 this.material.uniforms.uTime = { value: 0 };
                 this.material.uniforms.uIntensity = { value: 0 };
@@ -217,8 +188,11 @@
                 this.mesh.userData.parent = this;
                 scene.add(this.mesh);
                 
+                // Calculate a much darker shade of the exact same hue for the text
+                const darkTextColor = `hsl(${hue * 360}, 60%, 25%)`;
+
                 // DOM Setup using App's static factory method
-                this.labelEl = App.createMaxiLabelDOM(this.word, this.isTopic);
+                this.labelEl = App.createLabelDOM(this.word, this.isTopic, darkTextColor);
                 labelContainer.appendChild(this.labelEl);
                 
                 this.recalcTarget();
@@ -251,20 +225,17 @@
                 this.mesh.scale.set(d, d, 1); 
                 this.mesh.position.set(this.pos.x, this.pos.y, 0); 
                 
-                // Project 3D coordinate to 2D Screen Space
                 const vector = new THREE.Vector3(this.pos.x, this.pos.y, 0);
                 vector.project(camera); 
                 
                 const screenX = (vector.x * .5 + .5) * window.innerWidth;
                 const screenY = -(vector.y * .5 - .5) * window.innerHeight;
                 
-                // Scale the text relative to the camera zoom and blob radius
-                // 1 unit in world space = (window.innerHeight / currentZoom) pixels on screen
                 const pixelsPerUnit = window.innerHeight / currentZoom;
                 const pixelRadius = this.radius * pixelsPerUnit;
                 
-                // Base font size scaling factor
-                const scaleFactor = pixelRadius * 0.07; 
+                // Increased the scaling factor to match the screenshot proportion
+                const scaleFactor = pixelRadius * 0.45; 
                 
                 this.labelEl.style.transform = `translate(${screenX}px, ${screenY}px)`;
                 this.labelEl.style.fontSize = `${scaleFactor}px`;
@@ -293,28 +264,18 @@
                 this.animate();
             }
 
-            // Static factory for creating the layered text DOM
-            static createMaxiLabelDOM(wordString, isTopic) {
+            // Updated static factory for creating the clean, single-layer text DOM
+            static createLabelDOM(wordString, isTopic, textColor) {
                 const container = document.createElement('div');
                 container.className = 'blob-label-container';
                 if(isTopic) container.classList.add('is-topic');
 
-                const outerText = document.createElement('div');
-                outerText.className = 'maxi-label maxi-label-outer';
-                outerText.innerText = wordString;
+                const text = document.createElement('div');
+                text.className = 'blob-label';
+                text.innerText = wordString;
+                text.style.color = textColor; // Apply the calculated dark shade
 
-                const midText = document.createElement('div');
-                midText.className = 'maxi-label maxi-label-mid';
-                midText.innerText = wordString;
-
-                const innerText = document.createElement('div');
-                innerText.className = 'maxi-label maxi-label-inner';
-                innerText.innerText = wordString;
-
-                container.appendChild(outerText);
-                container.appendChild(midText);
-                container.appendChild(innerText);
-
+                container.appendChild(text);
                 return container;
             }
 
@@ -457,7 +418,6 @@
                 this.blobs.forEach(b => b.update(this.config.friction, this.config.settleSpeed, vW, vH, time));
                 this.resolvePhysics();
                 
-                // Pass camera and zoom down so labels can dynamically scale
                 this.blobs.forEach(b => b.draw(this.camera, this.currentZoom));
 
                 this.renderer.render(this.scene, this.camera);

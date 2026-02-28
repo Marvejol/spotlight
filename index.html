@@ -24,7 +24,7 @@
             display: flex; gap: 8px; background: rgba(255,255,255,0.95); padding: 10px 20px; border-radius: 30px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.4); align-items: center;
         }
-        #api-input { border: 1px solid #ccc; padding: 6px 10px; border-radius: 4px; width: 200px; font-size: 11px; }
+        #api-token { border: 1px solid #ccc; padding: 6px 10px; border-radius: 4px; width: 200px; font-size: 11px; }
         .status-dot { width: 10px; height: 10px; border-radius: 50%; background: #ccc; margin-right: 5px; transition: background 0.3s; }
         
         /* Leaderboard & Stats */
@@ -73,7 +73,7 @@
 
         <div id="api-controls" class="interactive">
             <div id="connection-dot" class="status-dot"></div>
-            <input type="text" id="api-token" placeholder="Paste Mastodon Access Token" style="border: 1px solid #ccc; padding: 6px 10px; border-radius: 4px; width: 200px; font-size: 11px;">
+            <input type="text" id="api-token" placeholder="Paste Mastodon Access Token">
             <button class="btn btn-green" id="btn-connect">Connect Real</button>
             <span style="font-size:10px; opacity:0.5;">OR</span>
             <button class="btn" id="btn-simulate">Simulate Data</button>
@@ -95,7 +95,7 @@
         uniform float uSeed;
         uniform float uSelected;
         uniform float uTime;
-        uniform float uIntensity; // New: visualizes token heat
+        uniform float uIntensity;
 
         float random(vec2 st) { return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123); }
 
@@ -104,7 +104,6 @@
             float dist = length(pos);
             float angle = atan(pos.y, pos.x);
 
-            // Make spikes more aggressive if the blob has high token intensity
             float spikeAmp = 0.03 + (uIntensity * 0.05); 
             float spikes = sin(angle * (8.0 + mod(uSeed, 4.0)) + uSeed + uTime * uIntensity) * spikeAmp;
             float burst = sin(angle * (12.0 + mod(uSeed, 8.0)) - uSeed) * 0.015;
@@ -115,7 +114,6 @@
             vec2 screenCoord = gl_FragCoord.xy;
             float staticGrain = (random(screenCoord * 0.5) - 0.5) * 0.14;
             
-            // Mix color based on intensity (Active topics get brighter/whiter)
             vec3 baseColor = mix(uColor, vec3(1.0, 1.0, 1.0), uIntensity * 0.6);
             vec3 color = mix(baseColor * 1.15, baseColor * 0.85, dist * 1.5) + staticGrain;
 
@@ -136,20 +134,18 @@
         const text = "ai tech privacy security surveillance encryption ethics algorithm digital safety crypto linux opensource software dev webdev coding programming hardware server database cloud infrastructure automation robot robotics cyber cybersec infosec decentralization fediverse mastodon activitypub instance server host admin moderator community moderation censorship freedom rights justice equality equity activism climate sustainability environment green energy nature planet earth space nasa astronomy stars galaxy rocket moon mars planet biology science physics chemistry research academic study university education teaching learning library books reading writing literature poetry art illustration design digitalart photography photo picture video cinema movie animation music sound audio radio podcast stream livestream gaming game player console nintendo deck steam linuxgaming retro arcade coffee tea morning breakfast food cooking recipe delicious healthy gym fitness workout health wellness mentalhealth therapy meditation mindfulness yoga sleep rest history archaeology architecture travel vacation adventure holiday summer winter spring autumn weather rain sun snow wind cloud ocean beach mountain forest plants garden flowers cat caturday kitten dog dogsofmastodon puppy pet animal wildlife bird introduction intro hello welcome news worldpolitics politics election vote democracy government law policy economy finance market money business startup entrepreneur management marketing branding advertisement trend viral breaking announcement update feature release bug fix error problem solution help support guide tutorial documentation clean minimalism simple complex modern classic vintage nostalgia future past present today yesterday tomorrow week month year time life work office remote home desk setup morning night evening weekend friday silentsunday throughthelens sky sunsets clouds gardening flowers blooming vegetables harvest sustainable eco organic zero-waste plasticfree recycling city urban street photography blackandwhite monochrome culture society humanity people person friend family parent child youth age old new small large high low fast slow light dark color red blue green yellow bright dark darkmode accessibility inclusivity diversity community connection conversation reply mention share boost favorite like post thread story blog vlog news media journalism report article essay quote opinion belief debate argument logic reason fact truth reality myth fake scam phishing secure private public local federated global universe space exploration telescope photography landscape portrait wildlife macro aesthetic creative inspiration motivation success goal dream focus productive efficiency tool app mobile desktop phone screen interface user experience pixel vector font typography letter word text language translation speak talk listen hear voice silent noise loud soft hard easy simple difficult challenge progress fail win luck random chaos order pattern harmony balance peace war conflict power leader leadership citizen vote protest movement change reform policy law legal court judge crime police safety danger risk hazard protection defense weapon military peace soldier veteran history memory future vision innovation discovery invention patent science fiction scifi fantasy dragon magic wizard sword shield battle quest adventure roleplay rpg level skill ability power magic mana spell caster heal damage tank support party dungeon loot boss quest craft trade gold silver copper craft artisan maker workshop build construct repair maintenance broken fix update patch version beta alpha release live production stage environment test qa devops deploy pipeline container docker kubernetes cloudflare edge compute backend frontend fullstack api rest graphql webhook latency performance optimize scale cluster distributed consensus p2p torrent magnetic seed peer node network socket protocol handshake secure socket layer tls ssl certificate key token auth login password biometric privacy policy gdpr cookies data tracking analytics metric log dashboard chart graph visualize design ux ui prototype wireframe mockup color palette contrast typography layout grid responsive mobilefirst touch gesture mouse click keyboard shortcut automation macro scripting terminal shell bash vim git commit branch merge pull request push deploy production staging legacy technical debt refactoring clean code solid dry kiss architecture patterns singleton factory observer proxy state strategy memento command visitor iterator template strategy pattern functional programming objectoriented inheritance polymorphism abstraction interface module package dependency manager npm pip cargo gem maven gradle build compile script execution runtime memory heap stack overflow garbage collection pointer reference variable constant scope closure async await promise callback thread process cpu gpu ram storage disk hardware firmware bios kernel os windows macos android ios mobile desktop serverless function lambda worker edge database sql nosql postgres mysql mongo redis graphdb vector search rag llm transformer gpt llama model weights inference training dataset bias hallucination prompt engineering fine-tuning zero-shot few-shot rag embedding cosine similarity vector database nlp natural language processing machine learning deep learning neural network neuron layer weight bias gradient descent backpropagation activation function relu sigmoid loss function accuracy precision recall f1score overfiting training validation test crossvalidation hyperparameter epoch batch latent space diffusion image generation midjourney stable diffusion dall-e synth generative ai creative prompt artist art style brush paint oil watercolor acrylic charcoal sketch pencil ink paper canvas museum gallery exhibition sculpture installation performance videoart film photography portrait landscape nature macro wildlife street architecture city night nightsky milkyway nebula galaxy supernova blackhole lightspeed relativity gravity quantum entanglement particle physics electron proton neutron atom molecule energy power voltage current resistance circuit resistor capacitor inductor transistor semiconductor chip cpu architecture arm x86 risc instruction set assembly compiler linker executable binary hex decimal octal unicode ascii utf8 encoding encryption decryption cipher key publickey privatekey rsa aes sha256 hashing blockchain bitcoin ethereum solana wallet transaction gas fee mining staking validator node consensus proofofwork proofofstake nft smartcontract dapps web3 dao metaverse virtualreality augmentedreality mixedreality xr vr headset controller tracking haptic feedback locomotion immersive presence avatar worldbuilding multiplayer network latency sync lag ping jitter server client p2p authoritative local prediction interpolation extrapolation physics engine collision detection rigidbody softbody fluid simulation particles shader glsl hlsl vertex fragment material texture normalmap bumpmap displacement shadow light ambient diffuse specular reflection refraction transparency glass water skybox fog postprocessing bloom dof motionblur antialiasing raytracing pathtracing rendering rasterization pipe pipeline gpu compute parallel processing multithreading task manager scheduler os kernel filesystem directory file metadata permission owner group read write execute shell environment path alias variable script automation cron job log rotation monitoring alert dashboard metrics uptime downtime maintenance status page incident response postmortem root cause analysis oncall devops sre reliability scalability availability performance tuning load balancer proxy reverse proxy dns domain registrar ssl certificate web server nginx apache caddy serverless edge computing cdn edge side include caching cache invalidation purge headers cookies session storage localstorage indexeddb service worker pwa progressive web app manifest offline mode background sync push notification web socket webrtc real time communication video call voice chat audio conferencing screen sharing collaborative editing version control git github gitlab bitbucket repo branch pull request merge conflict rebase cherrypick stash tag release workflow agile scrum kanban sprint backlog daily standup retrospective planning velocity story points user story requirement specification documentation readme wiki changelog license mit gpl apache bsd creative commons attribution copyleft copyright trademark patent intellectual property open source free software community contribution contributor code of conduct inclusivity diversity equity accessibility screen reader contrast keyboard navigation alt text localization internationalization i18n l10n rtl ltr character set timezone date time format currency units measurement metric imperial conversion logic math arithmetic geometry calculus algebra statistics probability mean median mode deviation variance correlation regression hypothesis testing experiment control group sample size bias significance pvalue data science analytics visualization dashboard kpi metric conversion rate bounce rate retention engagement reach impressions views clicks ctr cpc cpm roi marketing growth hacking seo sem smm content strategy copywriting email marketing newsletter subscription list management segmentation campaign automation landing page lead generation funnel optimization ux ui product design prototyping wireframing testing user research interview survey feedback persona journey map heatmap usability accessibility branding identity logo typography color theory composition layout storytelling narrative theme emotion empathy human-centered design";
         const baseWords = text.split(" ");
         
-        // Map allows O(1) lookup from word string to Blob ID
         const wordMap = new Map();
 
         // 2. BLOB CLASS
         class Blob {
             constructor(id, word, x, y, radius, hue, scene, geo, matBase) {
                 this.id = id; 
-                this.word = word.split('_')[0]; // Clean word
+                this.word = word.split('_')[0]; 
                 this.pos = new THREE.Vector2(x, y);
                 this.vel = new THREE.Vector2(0, 0); 
                 
-                // Token Economy Props
                 this.baseRadius = 15;
-                this.tokens = 1; // Start with 1 token
+                this.tokens = 1; 
                 this.targetRadius = this.baseRadius;
                 this.radius = this.baseRadius;
                 
@@ -167,25 +163,18 @@
                 scene.add(this.mesh);
             }
             
-            // Called when a user "invests" a token here
             addToken() {
                 this.tokens++;
                 this.recalcTarget();
             }
 
-            // Called when a user "leaves" for another topic
             removeToken() {
                 if(this.tokens > 1) this.tokens--;
                 this.recalcTarget();
             }
 
             recalcTarget() {
-                // Area is proportional to tokens. 
-                // Formula: Radius = Base * sqrt(tokens)
-                // This makes the first few tokens very impactful, but diminishes later (Square Root Law)
                 this.targetRadius = this.baseRadius * Math.sqrt(this.tokens * 0.8);
-                
-                // Visual heat indicator
                 this.material.uniforms.uIntensity.value = Math.min(this.tokens / 20.0, 1.0);
             }
 
@@ -195,7 +184,6 @@
             }
 
             update(fric, settle, vW, vH, time) {
-                // Smoothly interpolate current radius to target
                 this.radius += (this.targetRadius - this.radius) * settle;
                 this.mass = this.radius * this.radius;
                 
@@ -203,7 +191,6 @@
                 this.vel.multiplyScalar(fric);
                 this.material.uniforms.uTime.value = time;
 
-                // Bounds
                 const margin = this.radius * 0.8;
                 if (this.pos.x < -vW/2 + margin) this.vel.x += 0.25;
                 if (this.pos.x >  vW/2 - margin) this.vel.x -= 0.25;
@@ -223,7 +210,7 @@
             constructor() {
                 this.config = { 
                     count: 750, 
-                    agentCount: 2000, // Total Tokens in circulation
+                    agentCount: 2000, 
                     friction: 0.14, 
                     repulsion: 0.65, 
                     settleSpeed: 0.05, 
@@ -232,7 +219,7 @@
                 };
                 
                 this.blobs = []; 
-                this.agents = []; // Array of ints, where agents[i] = blobID they are watching
+                this.agents = []; 
                 this.tokenMovesPerSec = 0;
                 
                 this.targetZoom = this.config.zoomIn; 
@@ -241,7 +228,7 @@
                 this.isPanning = false; 
                 this.lbFull = false;
                 this.selectedBlob = null;
-                this.socket = null; // WebSocket holder
+                this.socket = null; 
 
                 this.initScene(); 
                 this.initBlobs(); 
@@ -249,7 +236,6 @@
                 this.bindEvents(); 
                 this.animate();
                 
-                // Stats ticker
                 setInterval(() => {
                     document.getElementById('flow-rate').innerText = this.tokenMovesPerSec;
                     this.tokenMovesPerSec = 0;
@@ -280,7 +266,6 @@
                 const cols = Math.floor(Math.sqrt(this.config.count * aspect));
                 const spacing = (this.config.zoomOut * aspect) / cols;
                 
-                // Generate Blobs
                 const uniqueWords = [...new Set(baseWords)]; 
                 
                 for(let i = 0; i < this.config.count; i++) {
@@ -293,7 +278,6 @@
                     
                     this.blobs.push(blob);
                     
-                    // Populate Map for O(1) API lookups
                     if (!wordMap.has(word)) wordMap.set(word, []);
                     wordMap.get(word).push(blob);
                 }
@@ -307,7 +291,6 @@
                 }
             }
 
-            // --- THE CORE LOGIC: MOVING ATTENTION ---
             shiftAttention(targetWord, amountOfAgents) {
                 const targets = wordMap.get(targetWord);
                 if(!targets) return;
@@ -327,51 +310,58 @@
                 }
             }
 
-            // --- MASTODON INTEGRATION (FIXED: Websockets + Debugging) ---
-           // --- MASTODON INTEGRATION (HOTSPOT PROOF: REST API POLLING) ---
             connectToMastodon(token) {
-                console.log("%c Starting Hotspot-Proof Connection...", "color: orange; font-weight:bold;");
+                console.log("%c Starting Bulletproof Connection...", "color: orange; font-weight:bold;");
                 const statusDot = document.getElementById('connection-dot');
                 const ticker = document.getElementById('ticker');
 
-                // 1. Kill any existing timers or sockets
                 if (this.pollerId) clearInterval(this.pollerId);
-                if (this.socket) this.socket.close();
 
                 statusDot.style.background = "orange";
                 ticker.style.opacity = 1;
                 ticker.innerText = "Initializing Polling Mode (Hotspot Safe)...";
 
-                // 2. Define the Fetch Function
                 const fetchLatest = async () => {
                     try {
-                        console.log("Fetching new batch...");
-                        // Request the last 40 items from the public timeline
-                        // Look ma, no headers!
-// Add the headers back so Mastodon knows who you are!
-const response = await fetch('https://mastodon.social/api/v1/timelines/public?limit=40', {
-    headers: { 'Authorization': `Bearer ${token}` }
-});
+                        // Grab the freshest token from the input
+                        const currentToken = document.getElementById('api-token').value.trim();
+                        
+                        // Pass token securely
+                        const headers = currentToken ? { 'Authorization': `Bearer ${currentToken}` } : {};
+
+                        const response = await fetch('https://mastodon.social/api/v1/timelines/public?limit=40', { headers });
 
                         if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
                         const data = await response.json();
+                        
+                        // SAFTEY CHECK: Did mastodon just return an empty array [] like in the screenshot?
+                        if (!Array.isArray(data) || data.length === 0) {
+                            console.warn("API returned an empty array []. Retrying next cycle...");
+                            ticker.innerText = "Listening... (API returned empty batch)";
+                            statusDot.style.background = "#ffeb3b"; // Yellow for warning but alive
+                            return; // Exit safely without crashing
+                        }
+
                         statusDot.style.background = "#0f0"; // Green = Success
                         
-                        // Process the batch
-                        if(data.length > 0) {
-                            const sample = data[0].content.replace(/<[^>]*>?/gm, '');
-                            ticker.innerText = `Latest: ${sample.substring(0, 60)}...`;
-                        }
+                        // Extract sample safely
+                        const firstPostContent = data[0].content || data[0].text || "";
+                        const sample = firstPostContent.replace(/<[^>]*>?/gm, '');
+                        if(sample) ticker.innerText = `Latest: ${sample.substring(0, 60)}...`;
 
                         let matches = 0;
                         data.forEach(post => {
-                            const cleanText = post.content.replace(/<[^>]*>?/gm, '').toLowerCase();
+                            // SAFTEY CHECK: Ensure post and content exist before parsing
+                            if (!post) return;
+                            const rawText = post.content || post.text || "";
+                            if (!rawText) return;
+
+                            const cleanText = rawText.replace(/<[^>]*>?/gm, '').toLowerCase();
                             const tokens = cleanText.split(/[\s,.]+/);
                             
                             tokens.forEach(t => {
                                 if(wordMap.has(t)) {
-                                    // Move agents for every keyword match
                                     this.shiftAttention(t, 2); 
                                     matches++;
                                 }
@@ -383,13 +373,12 @@ const response = await fetch('https://mastodon.social/api/v1/timelines/public?li
                     } catch (err) {
                         console.error("Polling Error:", err);
                         statusDot.style.background = "red";
-                        ticker.innerText = "Network Error (Check Token)";
+                        ticker.innerText = `Error: ${err.message}`; 
                     }
                 };
 
-                // 3. Start the Loop
-                fetchLatest(); // Run once immediately
-                this.pollerId = setInterval(fetchLatest, 4000); // Repeat every 4 seconds
+                fetchLatest(); 
+                this.pollerId = setInterval(fetchLatest, 4000); 
             }
 
             startSimulation() {
@@ -416,7 +405,6 @@ const response = await fetch('https://mastodon.social/api/v1/timelines/public?li
                     document.getElementById('lb-toggle').innerText = this.lbFull ? "Show Top 10" : "Show Full List";
                 };
                 
-                // API Buttons
                 document.getElementById('btn-connect').onclick = () => {
                     const token = document.getElementById('api-token').value.trim();
                     if(token) this.connectToMastodon(token);

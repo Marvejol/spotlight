@@ -73,7 +73,7 @@
 
         <div id="api-controls" class="interactive">
             <div id="connection-dot" class="status-dot"></div>
-            <input type="text" id="api-token" placeholder="Paste Mastodon Access Token" id="api-input">
+            <input type="text" id="api-token" placeholder="Paste Mastodon Access Token" style="border: 1px solid #ccc; padding: 6px 10px; border-radius: 4px; width: 200px; font-size: 11px;">
             <button class="btn btn-green" id="btn-connect">Connect Real</button>
             <span style="font-size:10px; opacity:0.5;">OR</span>
             <button class="btn" id="btn-simulate">Simulate Data</button>
@@ -348,7 +348,10 @@
                         console.log("Fetching new batch...");
                         // Request the last 40 items from the public timeline
                         // Look ma, no headers!
-const response = await fetch('https://mastodon.social/api/v1/timelines/public?limit=40');
+// Add the headers back so Mastodon knows who you are!
+const response = await fetch('https://mastodon.social/api/v1/timelines/public?limit=40', {
+    headers: { 'Authorization': `Bearer ${token}` }
+});
 
                         if (!response.ok) throw new Error(`HTTP ${response.status}`);
 

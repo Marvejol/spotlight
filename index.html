@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mosaic Fuego - Attention Economy (Debug Mode)</title>
+    <title>Mosaic Fuego - The Agora</title>
     <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
     <script type="importmap">
     {
@@ -13,75 +13,89 @@
     }
     </script>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #000; cursor: crosshair; font-family: sans-serif; }
+        body { margin: 0; overflow: hidden; background-color: #000; cursor: crosshair; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
         canvas { display: block; }
+        
         #ui-layer { position: fixed; inset: 0; pointer-events: none; z-index: 100; padding: 20px; color: black; }
         .interactive { pointer-events: auto; }
         
-        /* Top Bar for API Controls */
-        #api-controls {
-            position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
-            display: flex; gap: 8px; background: rgba(255,255,255,0.95); padding: 10px 20px; border-radius: 30px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.4); align-items: center;
+        /* Agora Input Panel */
+        #agora-panel {
+            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.95); padding: 20px 30px; border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5); display: flex; flex-direction: column; gap: 15px;
+            width: 400px; text-align: center;
         }
-        #api-token { border: 1px solid #ccc; padding: 6px 10px; border-radius: 4px; width: 200px; font-size: 11px; }
-        .status-dot { width: 10px; height: 10px; border-radius: 50%; background: #ccc; margin-right: 5px; transition: background 0.3s; }
         
-        /* Leaderboard & Stats */
-        #leaderboard {
-            position: absolute; top: 20px; left: 20px;
-            width: 220px; background: rgba(255,255,255,0.95); border-radius: 15px; padding: 15px; 
-            box-shadow: 0 4px 15px rgba(0,0,0,0.4); font-size: 12px;
+        .input-group { display: flex; flex-direction: column; gap: 5px; text-align: left; }
+        .input-group label { font-size: 11px; font-weight: bold; text-transform: uppercase; color: #555; }
+        .input-row { display: flex; gap: 10px; }
+        
+        input[type="text"] {
+            border: 1px solid #ddd; padding: 10px; border-radius: 8px; font-size: 14px;
+            width: 100%; box-sizing: border-box; background: #fafafa;
         }
-        #stats-box { margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid #eee; font-family: monospace; }
-        #lb-content { max-height: 40vh; overflow-y: auto; margin: 10px 0; }
-        .lb-item { display: flex; justify-content: space-between; padding: 4px 0; cursor: pointer; border-bottom: 1px dotted #eee; }
-        .lb-item:hover { font-weight: bold; color: #2196F3; }
+        input[type="text"]:focus { outline: none; border-color: #2196F3; background: #fff; }
         
         .btn {
-            background: #222; color: white; border: none; padding: 8px 16px; 
-            border-radius: 20px; cursor: pointer; font-weight: bold; font-size: 11px;
-            text-transform: uppercase; box-shadow: 0 4px 10px rgba(0,0,0,0.3);
-            transition: transform 0.1s;
+            background: #212121; color: white; border: none; padding: 12px 20px; 
+            border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 13px;
+            text-transform: uppercase; letter-spacing: 1px; transition: transform 0.1s, background 0.2s;
         }
-        .btn:active { transform: scale(0.95); }
-        .btn-green { background: #2e7d32; }
+        .btn:hover { background: #000; }
+        .btn:active { transform: scale(0.98); }
         
-        #zoomToggle { position: absolute; top: 20px; right: 20px; }
-        
-        /* Message ticker for incoming data */
-        #ticker {
-            position: absolute; bottom: 20px; left: 20px; right: 20px;
-            background: linear-gradient(90deg, transparent, rgba(0,0,0,0.8), transparent);
-            color: #0f0; font-family: monospace; padding: 10px; text-align: center;
-            font-size: 12px; pointer-events: none; opacity: 0; transition: opacity 0.5s;
+        #zoomToggle { position: absolute; top: 20px; right: 20px; border-radius: 20px; font-size: 11px; padding: 8px 16px;}
+
+        /* Text Label Overlay System */
+        #labels-layer {
+            position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
+            pointer-events: none; overflow: hidden; z-index: 50;
         }
+        
+        .blob-label {
+            position: absolute; top: 0; left: 0;
+            color: #fff; font-weight: 800; text-align: center;
+            text-shadow: 0px 2px 10px rgba(0,0,0,0.6), 0px 0px 4px rgba(0,0,0,0.8);
+            transform: translate(-50%, -50%); /* Center on the coordinate */
+            transition: font-size 0.2s ease-out;
+            will-change: transform;
+            user-select: none;
+        }
+        
+        /* Differentiate Topics from generic words visually */
+        .blob-label.is-topic { text-transform: uppercase; color: #ffebee; letter-spacing: 1px; }
     </style>
 </head>
 <body>
 
-    <div id="ui-layer">
-        <div id="leaderboard" class="interactive">
-            <div id="stats-box">
-                Active Agents: <span id="agent-count">2000</span><br>
-                Token Moves/s: <span id="flow-rate">0</span>
-            </div>
-            <b style="font-size: 14px;">TOP TRENDS</b>
-            <div id="lb-content"></div>
-            <button class="btn" id="lb-toggle" style="width:100%; font-size: 9px; margin-top:5px;">Show Full List</button>
-        </div>
+    <div id="labels-layer"></div>
 
-        <div id="api-controls" class="interactive">
-            <div id="connection-dot" class="status-dot"></div>
-            <input type="text" id="api-token" placeholder="Paste Mastodon Access Token">
-            <button class="btn btn-green" id="btn-connect">Connect Real</button>
-            <span style="font-size:10px; opacity:0.5;">OR</span>
-            <button class="btn" id="btn-simulate">Simulate Data</button>
+    <div id="ui-layer">
+        <div id="agora-panel" class="interactive">
+            <div style="font-weight: 800; font-size: 18px; letter-spacing: -0.5px;">THE AGORA</div>
+            <div style="font-size: 12px; color: #666; margin-top: -10px;">Map the Zeitgeist. What connections do you see?</div>
+            
+            <div class="input-group">
+                <label>The Topic</label>
+                <input type="text" id="input-topic" placeholder="e.g., Artificial Intelligence" autocomplete="off">
+            </div>
+            
+            <div class="input-group">
+                <label>3 Instinctive Associations</label>
+                <div class="input-row">
+                    <input type="text" id="input-word1" placeholder="Word 1" autocomplete="off">
+                    <input type="text" id="input-word2" placeholder="Word 2" autocomplete="off">
+                    <input type="text" id="input-word3" placeholder="Word 3" autocomplete="off">
+                </div>
+            </div>
+            
+            <button class="btn" id="btn-submit">Add to Map</button>
         </div>
 
         <button class="btn interactive" id="zoomToggle">Toggle View</button>
-        <div id="ticker">Waiting for data stream...</div>
     </div>
+    
     <div id="container"></div>
 
     <script type="x-shader/x-vertex" id="vertexshader">
@@ -93,7 +107,6 @@
         varying vec2 vUv;
         uniform vec3 uColor;
         uniform float uSeed;
-        uniform float uSelected;
         uniform float uTime;
         uniform float uIntensity;
 
@@ -117,12 +130,6 @@
             vec3 baseColor = mix(uColor, vec3(1.0, 1.0, 1.0), uIntensity * 0.6);
             vec3 color = mix(baseColor * 1.15, baseColor * 0.85, dist * 1.5) + staticGrain;
 
-            if(uSelected > 0.5) {
-                float dots = step(0.5, sin(angle * 20.0 + uTime * 5.0));
-                float border = smoothstep(edgeDist - 0.015, edgeDist, dist) * (1.0 - smoothstep(edgeDist, edgeDist + 0.005, dist));
-                color = mix(color, vec3(1.0), border * dots);
-            }
-
             gl_FragColor = vec4(color, shapeMask);
         }
     </script>
@@ -130,37 +137,46 @@
     <script type="module">
         import * as THREE from 'three';
 
-        // 1. DATA SETUP
-        const text = "ai tech privacy security surveillance encryption ethics algorithm digital safety crypto linux opensource software dev webdev coding programming hardware server database cloud infrastructure automation robot robotics cyber cybersec infosec decentralization fediverse mastodon activitypub instance server host admin moderator community moderation censorship freedom rights justice equality equity activism climate sustainability environment green energy nature planet earth space nasa astronomy stars galaxy rocket moon mars planet biology science physics chemistry research academic study university education teaching learning library books reading writing literature poetry art illustration design digitalart photography photo picture video cinema movie animation music sound audio radio podcast stream livestream gaming game player console nintendo deck steam linuxgaming retro arcade coffee tea morning breakfast food cooking recipe delicious healthy gym fitness workout health wellness mentalhealth therapy meditation mindfulness yoga sleep rest history archaeology architecture travel vacation adventure holiday summer winter spring autumn weather rain sun snow wind cloud ocean beach mountain forest plants garden flowers cat caturday kitten dog dogsofmastodon puppy pet animal wildlife bird introduction intro hello welcome news worldpolitics politics election vote democracy government law policy economy finance market money business startup entrepreneur management marketing branding advertisement trend viral breaking announcement update feature release bug fix error problem solution help support guide tutorial documentation clean minimalism simple complex modern classic vintage nostalgia future past present today yesterday tomorrow week month year time life work office remote home desk setup morning night evening weekend friday silentsunday throughthelens sky sunsets clouds gardening flowers blooming vegetables harvest sustainable eco organic zero-waste plasticfree recycling city urban street photography blackandwhite monochrome culture society humanity people person friend family parent child youth age old new small large high low fast slow light dark color red blue green yellow bright dark darkmode accessibility inclusivity diversity community connection conversation reply mention share boost favorite like post thread story blog vlog news media journalism report article essay quote opinion belief debate argument logic reason fact truth reality myth fake scam phishing secure private public local federated global universe space exploration telescope photography landscape portrait wildlife macro aesthetic creative inspiration motivation success goal dream focus productive efficiency tool app mobile desktop phone screen interface user experience pixel vector font typography letter word text language translation speak talk listen hear voice silent noise loud soft hard easy simple difficult challenge progress fail win luck random chaos order pattern harmony balance peace war conflict power leader leadership citizen vote protest movement change reform policy law legal court judge crime police safety danger risk hazard protection defense weapon military peace soldier veteran history memory future vision innovation discovery invention patent science fiction scifi fantasy dragon magic wizard sword shield battle quest adventure roleplay rpg level skill ability power magic mana spell caster heal damage tank support party dungeon loot boss quest craft trade gold silver copper craft artisan maker workshop build construct repair maintenance broken fix update patch version beta alpha release live production stage environment test qa devops deploy pipeline container docker kubernetes cloudflare edge compute backend frontend fullstack api rest graphql webhook latency performance optimize scale cluster distributed consensus p2p torrent magnetic seed peer node network socket protocol handshake secure socket layer tls ssl certificate key token auth login password biometric privacy policy gdpr cookies data tracking analytics metric log dashboard chart graph visualize design ux ui prototype wireframe mockup color palette contrast typography layout grid responsive mobilefirst touch gesture mouse click keyboard shortcut automation macro scripting terminal shell bash vim git commit branch merge pull request push deploy production staging legacy technical debt refactoring clean code solid dry kiss architecture patterns singleton factory observer proxy state strategy memento command visitor iterator template strategy pattern functional programming objectoriented inheritance polymorphism abstraction interface module package dependency manager npm pip cargo gem maven gradle build compile script execution runtime memory heap stack overflow garbage collection pointer reference variable constant scope closure async await promise callback thread process cpu gpu ram storage disk hardware firmware bios kernel os windows macos android ios mobile desktop serverless function lambda worker edge database sql nosql postgres mysql mongo redis graphdb vector search rag llm transformer gpt llama model weights inference training dataset bias hallucination prompt engineering fine-tuning zero-shot few-shot rag embedding cosine similarity vector database nlp natural language processing machine learning deep learning neural network neuron layer weight bias gradient descent backpropagation activation function relu sigmoid loss function accuracy precision recall f1score overfiting training validation test crossvalidation hyperparameter epoch batch latent space diffusion image generation midjourney stable diffusion dall-e synth generative ai creative prompt artist art style brush paint oil watercolor acrylic charcoal sketch pencil ink paper canvas museum gallery exhibition sculpture installation performance videoart film photography portrait landscape nature macro wildlife street architecture city night nightsky milkyway nebula galaxy supernova blackhole lightspeed relativity gravity quantum entanglement particle physics electron proton neutron atom molecule energy power voltage current resistance circuit resistor capacitor inductor transistor semiconductor chip cpu architecture arm x86 risc instruction set assembly compiler linker executable binary hex decimal octal unicode ascii utf8 encoding encryption decryption cipher key publickey privatekey rsa aes sha256 hashing blockchain bitcoin ethereum solana wallet transaction gas fee mining staking validator node consensus proofofwork proofofstake nft smartcontract dapps web3 dao metaverse virtualreality augmentedreality mixedreality xr vr headset controller tracking haptic feedback locomotion immersive presence avatar worldbuilding multiplayer network latency sync lag ping jitter server client p2p authoritative local prediction interpolation extrapolation physics engine collision detection rigidbody softbody fluid simulation particles shader glsl hlsl vertex fragment material texture normalmap bumpmap displacement shadow light ambient diffuse specular reflection refraction transparency glass water skybox fog postprocessing bloom dof motionblur antialiasing raytracing pathtracing rendering rasterization pipe pipeline gpu compute parallel processing multithreading task manager scheduler os kernel filesystem directory file metadata permission owner group read write execute shell environment path alias variable script automation cron job log rotation monitoring alert dashboard metrics uptime downtime maintenance status page incident response postmortem root cause analysis oncall devops sre reliability scalability availability performance tuning load balancer proxy reverse proxy dns domain registrar ssl certificate web server nginx apache caddy serverless edge computing cdn edge side include caching cache invalidation purge headers cookies session storage localstorage indexeddb service worker pwa progressive web app manifest offline mode background sync push notification web socket webrtc real time communication video call voice chat audio conferencing screen sharing collaborative editing version control git github gitlab bitbucket repo branch pull request merge conflict rebase cherrypick stash tag release workflow agile scrum kanban sprint backlog daily standup retrospective planning velocity story points user story requirement specification documentation readme wiki changelog license mit gpl apache bsd creative commons attribution copyleft copyright trademark patent intellectual property open source free software community contribution contributor code of conduct inclusivity diversity equity accessibility screen reader contrast keyboard navigation alt text localization internationalization i18n l10n rtl ltr character set timezone date time format currency units measurement metric imperial conversion logic math arithmetic geometry calculus algebra statistics probability mean median mode deviation variance correlation regression hypothesis testing experiment control group sample size bias significance pvalue data science analytics visualization dashboard kpi metric conversion rate bounce rate retention engagement reach impressions views clicks ctr cpc cpm roi marketing growth hacking seo sem smm content strategy copywriting email marketing newsletter subscription list management segmentation campaign automation landing page lead generation funnel optimization ux ui product design prototyping wireframing testing user research interview survey feedback persona journey map heatmap usability accessibility branding identity logo typography color theory composition layout storytelling narrative theme emotion empathy human-centered design";
-        const baseWords = text.split(" ");
-        
+        // Modular App State
         const wordMap = new Map();
+        let globalIdCounter = 0;
 
-        // 2. BLOB CLASS
+        // 1. BLOB CLASS
         class Blob {
-            constructor(id, word, x, y, radius, hue, scene, geo, matBase) {
-                this.id = id; 
-                this.word = word.split('_')[0]; 
+            constructor(word, x, y, isTopic, scene, geo, matBase, labelContainer) {
+                this.id = globalIdCounter++; 
+                this.word = word; 
+                this.isTopic = isTopic;
+                
                 this.pos = new THREE.Vector2(x, y);
                 this.vel = new THREE.Vector2(0, 0); 
                 
-                this.baseRadius = 15;
+                // Topics start slightly larger
+                this.baseRadius = isTopic ? 20 : 12;
                 this.tokens = 1; 
                 this.targetRadius = this.baseRadius;
-                this.radius = this.baseRadius;
-                
+                this.radius = 0.1; // Start tiny for pop-in animation
                 this.mass = this.radius * this.radius;
                 
+                // WebGL Mesh Setup
                 this.material = matBase.clone();
-                this.material.uniforms.uColor.value.setHSL(hue/360, 0.65, 0.55);
+                this.material.uniforms.uColor.value.setHSL(Math.random(), 0.7, 0.5);
                 this.material.uniforms.uSeed.value = Math.random() * 100.0;
                 this.material.uniforms.uTime = { value: 0 };
-                this.material.uniforms.uSelected = { value: 0 };
                 this.material.uniforms.uIntensity = { value: 0 };
 
                 this.mesh = new THREE.Mesh(geo, this.material);
                 this.mesh.userData.parent = this;
                 scene.add(this.mesh);
+                
+                // DOM Label Setup
+                this.labelEl = document.createElement('div');
+                this.labelEl.className = 'blob-label';
+                if(isTopic) this.labelEl.classList.add('is-topic');
+                this.labelEl.innerText = this.word;
+                labelContainer.appendChild(this.labelEl);
+                
+                this.recalcTarget();
             }
             
             addToken() {
@@ -168,231 +184,138 @@
                 this.recalcTarget();
             }
 
-            removeToken() {
-                if(this.tokens > 1) this.tokens--;
-                this.recalcTarget();
-            }
-
             recalcTarget() {
+                // Square Root Law for diminishing sizing
                 this.targetRadius = this.baseRadius * Math.sqrt(this.tokens * 0.8);
                 this.material.uniforms.uIntensity.value = Math.min(this.tokens / 20.0, 1.0);
-            }
-
-            setSelected(state) {
-                this.material.uniforms.uSelected.value = state ? 1 : 0;
-                this.mesh.renderOrder = state ? 1 : 0;
+                
+                // Update font size based on tokens
+                const fontSize = this.isTopic ? 
+                    Math.min(14 + (this.tokens * 1.5), 36) : 
+                    Math.min(11 + (this.tokens * 1.2), 24);
+                this.labelEl.style.fontSize = `${fontSize}px`;
             }
 
             update(fric, settle, vW, vH, time) {
+                // Size interpolation
                 this.radius += (this.targetRadius - this.radius) * settle;
                 this.mass = this.radius * this.radius;
                 
+                // Gentle gravity towards center (0,0) to keep the cluster tight
+                this.vel.x -= this.pos.x * 0.001;
+                this.vel.y -= this.pos.y * 0.001;
+
                 this.pos.add(this.vel); 
                 this.vel.multiplyScalar(fric);
                 this.material.uniforms.uTime.value = time;
-
-                const margin = this.radius * 0.8;
-                if (this.pos.x < -vW/2 + margin) this.vel.x += 0.25;
-                if (this.pos.x >  vW/2 - margin) this.vel.x -= 0.25;
-                if (this.pos.y < -vH/2 + margin) this.vel.y += 0.25;
-                if (this.pos.y >  vH/2 - margin) this.vel.y -= 0.25;
             }
 
-            draw() { 
+            draw(camera) { 
+                // Update WebGL Mesh
                 const d = this.radius * 2.6; 
                 this.mesh.scale.set(d, d, 1); 
                 this.mesh.position.set(this.pos.x, this.pos.y, 0); 
+                
+                // Update DOM Label projection
+                const vector = new THREE.Vector3(this.pos.x, this.pos.y, 0);
+                vector.project(camera); // Maps 3D space to -1 to +1 screen space
+                
+                const screenX = (vector.x * .5 + .5) * window.innerWidth;
+                const screenY = -(vector.y * .5 - .5) * window.innerHeight;
+                
+                this.labelEl.style.transform = `translate(-50%, -50%) translate(${screenX}px, ${screenY}px)`;
             }
         }
 
-        // 3. MAIN APP
+        // 2. MAIN APP
         class App {
             constructor() {
                 this.config = { 
-                    count: 750, 
-                    agentCount: 2000, 
                     friction: 0.14, 
                     repulsion: 0.65, 
                     settleSpeed: 0.05, 
-                    zoomIn: 480, 
-                    zoomOut: 1300 
+                    zoomIn: 400, 
+                    zoomOut: 1000 
                 };
                 
                 this.blobs = []; 
-                this.agents = []; 
-                this.tokenMovesPerSec = 0;
-                
                 this.targetZoom = this.config.zoomIn; 
                 this.currentZoom = this.config.zoomIn;
                 this.cameraOffset = new THREE.Vector2(0, 0); 
                 this.isPanning = false; 
-                this.lbFull = false;
-                this.selectedBlob = null;
-                this.socket = null; 
 
                 this.initScene(); 
-                this.initBlobs(); 
-                this.initAgents();
                 this.bindEvents(); 
                 this.animate();
-                
-                setInterval(() => {
-                    document.getElementById('flow-rate').innerText = this.tokenMovesPerSec;
-                    this.tokenMovesPerSec = 0;
-                    this.updateUI();
-                }, 1000);
             }
 
             initScene() {
                 this.scene = new THREE.Scene();
                 this.camera = new THREE.OrthographicCamera();
                 this.camera.position.z = 10;
-                this.renderer = new THREE.WebGLRenderer({ antialias: true });
+                this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
                 this.renderer.setSize(window.innerWidth, window.innerHeight);
                 this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
                 document.getElementById('container').appendChild(this.renderer.domElement);
-            }
-
-            initBlobs() {
-                const geo = new THREE.PlaneGeometry(1, 1);
-                const mat = new THREE.ShaderMaterial({
-                    uniforms: { uColor: { value: new THREE.Color() }, uSeed: { value: 0 }, uTime: { value: 0 }, uSelected: { value: 0 }, uIntensity: { value: 0 } },
+                
+                this.labelContainer = document.getElementById('labels-layer');
+                
+                // Shared materials for performance
+                this.baseGeo = new THREE.PlaneGeometry(1, 1);
+                this.baseMat = new THREE.ShaderMaterial({
+                    uniforms: { uColor: { value: new THREE.Color() }, uSeed: { value: 0 }, uTime: { value: 0 }, uIntensity: { value: 0 } },
                     vertexShader: document.getElementById('vertexshader').textContent,
                     fragmentShader: document.getElementById('fragmentshader').textContent,
                     transparent: true, depthTest: false
                 });
-                
-                const aspect = window.innerWidth / window.innerHeight;
-                const cols = Math.floor(Math.sqrt(this.config.count * aspect));
-                const spacing = (this.config.zoomOut * aspect) / cols;
-                
-                const uniqueWords = [...new Set(baseWords)]; 
-                
-                for(let i = 0; i < this.config.count; i++) {
-                    const r = Math.floor(i / cols), c = i % cols;
-                    const x = (c - cols/2) * spacing + (Math.random()-0.5)*10;
-                    const y = (r - (this.config.count/cols)/2) * spacing + (Math.random()-0.5)*10;
+            }
+
+            // Centralized method for adding/updating words
+            addNode(wordString, isTopic) {
+                const cleanWord = wordString.trim().toLowerCase();
+                if (!cleanWord) return;
+
+                if (wordMap.has(cleanWord)) {
+                    // Word exists: increase its weight/size
+                    const existingBlob = wordMap.get(cleanWord);
+                    existingBlob.addToken();
                     
-                    const word = uniqueWords[i % uniqueWords.length];
-                    const blob = new Blob(i, word, x, y, 15, Math.random() * 360, this.scene, geo, mat);
+                    // Add a little physical "bump" to show it was interacted with
+                    existingBlob.vel.y += 2;
+                } else {
+                    // New Word: Spawn it near the center with some randomness
+                    const spawnRadius = 50;
+                    const angle = Math.random() * Math.PI * 2;
+                    const x = Math.cos(angle) * spawnRadius;
+                    const y = Math.sin(angle) * spawnRadius;
+                    
+                    const blob = new Blob(
+                        cleanWord, x, y, isTopic, 
+                        this.scene, this.baseGeo, this.baseMat, this.labelContainer
+                    );
                     
                     this.blobs.push(blob);
-                    
-                    if (!wordMap.has(word)) wordMap.set(word, []);
-                    wordMap.get(word).push(blob);
+                    wordMap.set(cleanWord, blob);
                 }
             }
 
-            initAgents() {
-                for(let i=0; i<this.config.agentCount; i++) {
-                    const randomBlobIndex = Math.floor(Math.random() * this.blobs.length);
-                    this.agents.push(randomBlobIndex);
-                    this.blobs[randomBlobIndex].addToken();
-                }
-            }
+            handleSubmission() {
+                const topicInput = document.getElementById('input-topic');
+                const w1 = document.getElementById('input-word1');
+                const w2 = document.getElementById('input-word2');
+                const w3 = document.getElementById('input-word3');
 
-            shiftAttention(targetWord, amountOfAgents) {
-                const targets = wordMap.get(targetWord);
-                if(!targets) return;
+                if(!topicInput.value) { alert("Please enter a topic."); return; }
 
-                const targetBlob = targets[0]; 
+                // Add the elements to the map
+                this.addNode(topicInput.value, true); // True flag = is a Topic
+                this.addNode(w1.value, false);
+                this.addNode(w2.value, false);
+                this.addNode(w3.value, false);
 
-                for(let k=0; k<amountOfAgents; k++) {
-                    const agentIndex = Math.floor(Math.random() * this.agents.length);
-                    const oldBlobId = this.agents[agentIndex];
-
-                    if(oldBlobId !== targetBlob.id) {
-                        this.blobs[oldBlobId].removeToken();
-                        this.agents[agentIndex] = targetBlob.id;
-                        targetBlob.addToken();
-                        this.tokenMovesPerSec++;
-                    }
-                }
-            }
-
-            connectToMastodon(token) {
-                console.log("%c Starting Bulletproof Connection...", "color: orange; font-weight:bold;");
-                const statusDot = document.getElementById('connection-dot');
-                const ticker = document.getElementById('ticker');
-
-                if (this.pollerId) clearInterval(this.pollerId);
-
-                statusDot.style.background = "orange";
-                ticker.style.opacity = 1;
-                ticker.innerText = "Initializing Polling Mode (Hotspot Safe)...";
-
-                const fetchLatest = async () => {
-                    try {
-                        // Grab the freshest token from the input
-                        const currentToken = document.getElementById('api-token').value.trim();
-                        
-                        // Pass token securely
-                        const headers = currentToken ? { 'Authorization': `Bearer ${currentToken}` } : {};
-
-                        const response = await fetch('https://mastodon.social/api/v1/timelines/public?limit=40', { headers });
-
-                        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-                        const data = await response.json();
-                        
-                        // SAFTEY CHECK: Did mastodon just return an empty array [] like in the screenshot?
-                        if (!Array.isArray(data) || data.length === 0) {
-                            console.warn("API returned an empty array []. Retrying next cycle...");
-                            ticker.innerText = "Listening... (API returned empty batch)";
-                            statusDot.style.background = "#ffeb3b"; // Yellow for warning but alive
-                            return; // Exit safely without crashing
-                        }
-
-                        statusDot.style.background = "#0f0"; // Green = Success
-                        
-                        // Extract sample safely
-                        const firstPostContent = data[0].content || data[0].text || "";
-                        const sample = firstPostContent.replace(/<[^>]*>?/gm, '');
-                        if(sample) ticker.innerText = `Latest: ${sample.substring(0, 60)}...`;
-
-                        let matches = 0;
-                        data.forEach(post => {
-                            // SAFTEY CHECK: Ensure post and content exist before parsing
-                            if (!post) return;
-                            const rawText = post.content || post.text || "";
-                            if (!rawText) return;
-
-                            const cleanText = rawText.replace(/<[^>]*>?/gm, '').toLowerCase();
-                            const tokens = cleanText.split(/[\s,.]+/);
-                            
-                            tokens.forEach(t => {
-                                if(wordMap.has(t)) {
-                                    this.shiftAttention(t, 2); 
-                                    matches++;
-                                }
-                            });
-                        });
-                        
-                        if(matches > 0) console.log(`%c Batch Processed: ${matches} keywords active`, "color: #0f0");
-
-                    } catch (err) {
-                        console.error("Polling Error:", err);
-                        statusDot.style.background = "red";
-                        ticker.innerText = `Error: ${err.message}`; 
-                    }
-                };
-
-                fetchLatest(); 
-                this.pollerId = setInterval(fetchLatest, 4000); 
-            }
-
-            startSimulation() {
-                const ticker = document.getElementById('ticker');
-                ticker.style.opacity = 1;
-                document.getElementById('connection-dot').style.background = "cyan";
-                console.log("Starting Simulation Mode...");
-                
-                setInterval(() => {
-                    const randomBlob = this.blobs[Math.floor(Math.random() * this.blobs.length)];
-                    const word = randomBlob.word;
-                    ticker.innerText = `Simulated Trend: "${word}" is spiking!`;
-                    this.shiftAttention(word, 50);
-                }, 200);
+                // Clear inputs for the next entry
+                topicInput.value = ''; w1.value = ''; w2.value = ''; w3.value = '';
+                topicInput.focus();
             }
 
             bindEvents() {
@@ -400,102 +323,88 @@
                     this.targetZoom = (this.targetZoom === this.config.zoomIn) ? this.config.zoomOut : this.config.zoomIn;
                     if(this.targetZoom === this.config.zoomIn) this.cameraOffset.set(0,0);
                 };
-                document.getElementById('lb-toggle').onclick = () => {
-                    this.lbFull = !this.lbFull;
-                    document.getElementById('lb-toggle').innerText = this.lbFull ? "Show Top 10" : "Show Full List";
-                };
                 
-                document.getElementById('btn-connect').onclick = () => {
-                    const token = document.getElementById('api-token').value.trim();
-                    if(token) this.connectToMastodon(token);
-                    else alert("Please paste a token first!");
-                };
+                document.getElementById('btn-submit').onclick = () => this.handleSubmission();
                 
-                document.getElementById('btn-simulate').onclick = () => {
-                    this.startSimulation();
-                };
+                // Allow hitting 'Enter' to submit
+                document.getElementById('agora-panel').addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') this.handleSubmission();
+                });
 
-                window.addEventListener('mousedown', (e) => this.onMouseDown(e));
-                window.addEventListener('mousemove', (e) => this.onMouseMove(e));
+                window.addEventListener('mousedown', (e) => {
+                    if (e.target.closest('.interactive')) return;
+                    if (this.targetZoom === this.config.zoomOut) {
+                        this.isPanning = true; this.prevMouse = { x: e.clientX, y: e.clientY };
+                    }
+                });
+                
+                window.addEventListener('mousemove', (e) => {
+                    if (this.isPanning && this.targetZoom === this.config.zoomOut) {
+                        const scalar = this.currentZoom / window.innerHeight;
+                        this.cameraOffset.x -= (e.clientX - this.prevMouse.x) * scalar;
+                        this.cameraOffset.y += (e.clientY - this.prevMouse.y) * scalar;
+                        this.prevMouse = { x: e.clientX, y: e.clientY };
+                    }
+                });
+                
                 window.addEventListener('mouseup', () => this.isPanning = false);
-                window.addEventListener('resize', () => this.renderer.setSize(window.innerWidth, window.innerHeight));
-            }
-
-            selectBlob(blob) {
-                if(!blob) return;
-                if(this.selectedBlob) this.selectedBlob.setSelected(false);
-                this.selectedBlob = blob;
-                this.selectedBlob.setSelected(true);
-                this.cameraOffset.copy(blob.pos);
-            }
-
-            onMouseDown(e) {
-                if (e.target.closest('.interactive')) return;
-                if (this.targetZoom === this.config.zoomOut) {
-                    this.isPanning = true; this.prevMouse = { x: e.clientX, y: e.clientY };
-                }
-                const mouse = new THREE.Vector2((e.clientX/window.innerWidth)*2-1, -(e.clientY/window.innerHeight)*2+1);
-                const ray = new THREE.Raycaster();
-                ray.setFromCamera(mouse, this.camera);
-                const hits = ray.intersectObjects(this.scene.children);
-                if(hits.length > 0) {
-                    this.selectBlob(hits[0].object.userData.parent);
-                }
-            }
-
-            onMouseMove(e) {
-                if (this.isPanning && this.targetZoom === this.config.zoomOut) {
-                    const scalar = this.currentZoom / window.innerHeight;
-                    this.cameraOffset.x -= (e.clientX - this.prevMouse.x) * scalar;
-                    this.cameraOffset.y += (e.clientY - this.prevMouse.y) * scalar;
-                    this.prevMouse = { x: e.clientX, y: e.clientY };
-                }
+                
+                window.addEventListener('resize', () => {
+                    this.renderer.setSize(window.innerWidth, window.innerHeight);
+                });
             }
 
             resolvePhysics() {
+                // O(n^2) collision resolution
                 for (let i = 0; i < this.blobs.length; i++) {
                     const b1 = this.blobs[i];
                     for (let j = i + 1; j < this.blobs.length; j++) {
                         const b2 = this.blobs[j];
-                        const dx = b2.pos.x - b1.pos.x, dy = b2.pos.y - b1.pos.y, d2 = dx*dx + dy*dy, min = b1.radius + b2.radius;
-                        if (d2 < min * min) {
-                            const d = Math.sqrt(d2) || 0.1, overlap = (min - d) * this.config.repulsion;
+                        const dx = b2.pos.x - b1.pos.x;
+                        const dy = b2.pos.y - b1.pos.y;
+                        const d2 = dx*dx + dy*dy;
+                        const minDist = b1.radius + b2.radius;
+                        
+                        if (d2 < minDist * minDist) {
+                            const d = Math.sqrt(d2) || 0.1;
+                            const overlap = (minDist - d) * this.config.repulsion;
                             const nx = dx/d, ny = dy/d, tm = b1.mass + b2.mass;
-                            b1.vel.x -= nx * overlap * (b2.mass / tm); b1.vel.y -= ny * overlap * (b2.mass / tm);
-                            b2.vel.x += nx * overlap * (b1.mass / tm); b2.vel.y += ny * overlap * (b1.mass / tm);
+                            
+                            b1.vel.x -= nx * overlap * (b2.mass / tm); 
+                            b1.vel.y -= ny * overlap * (b2.mass / tm);
+                            b2.vel.x += nx * overlap * (b1.mass / tm); 
+                            b2.vel.y += ny * overlap * (b1.mass / tm);
                         }
                     }
                 }
             }
 
-            updateUI() {
-                const sorted = [...this.blobs].sort((a,b) => b.tokens - a.tokens);
-                const list = this.lbFull ? sorted.slice(0, 50) : sorted.slice(0, 10);
-                document.getElementById('lb-content').innerHTML = list.map((b) => `
-                    <div class="lb-item" onclick="window.app.selectBlob(window.app.blobs[${b.id}])">
-                        <span style="${this.selectedBlob?.id === b.id ? 'font-weight:bold; color:#2196F3;' : ''}">${b.word}</span>
-                        <span style="opacity:0.5">${b.tokens} 🪙</span>
-                    </div>
-                `).join('');
-            }
-
             animate() {
                 requestAnimationFrame(() => this.animate());
+                
                 const time = performance.now() * 0.001;
                 this.currentZoom += (this.targetZoom - this.currentZoom) * 0.08;
                 const aspect = window.innerWidth / window.innerHeight;
-                const vW = this.currentZoom * aspect, vH = this.currentZoom;
-                this.camera.left = -vW/2 + this.cameraOffset.x; this.camera.right = vW/2 + this.cameraOffset.x;
-                this.camera.top = vH/2 + this.cameraOffset.y; this.camera.bottom = -vH/2 + this.cameraOffset.y;
+                
+                const vW = this.currentZoom * aspect;
+                const vH = this.currentZoom;
+                
+                this.camera.left = -vW/2 + this.cameraOffset.x; 
+                this.camera.right = vW/2 + this.cameraOffset.x;
+                this.camera.top = vH/2 + this.cameraOffset.y; 
+                this.camera.bottom = -vH/2 + this.cameraOffset.y;
                 this.camera.updateProjectionMatrix();
 
                 this.blobs.forEach(b => b.update(this.config.friction, this.config.settleSpeed, vW, vH, time));
                 this.resolvePhysics();
-                this.blobs.forEach(b => b.draw());
+                
+                // Pass camera to draw so labels can track properly
+                this.blobs.forEach(b => b.draw(this.camera));
 
                 this.renderer.render(this.scene, this.camera);
             }
         }
+        
         window.app = new App();
     </script>
 </body>

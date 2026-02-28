@@ -70,15 +70,15 @@
             font-weight: 700; 
             line-height: 1;
             white-space: nowrap;
-            letter-spacing: -0.04em; /* Very tight spacing */
+            letter-spacing: -0.04em;
             text-transform: uppercase;
             text-align: center;
             z-index: 10;
             
-            /* Simple Carved/Debossed effect using semi-transparent shadows */
+            /* Changed from fixed px to proportional 'em' units so shadows shrink with the text */
             text-shadow: 
-                -1px -1px 1px rgba(0, 0, 0, 0.4),  /* Dark inner shadow top-left */
-                 1px  1px 1px rgba(255, 255, 255, 0.4); /* Light edge bottom-right */
+                -0.03em -0.03em 0.02em rgba(0, 0, 0, 0.45), 
+                 0.03em  0.03em 0.02em rgba(255, 255, 255, 0.4); 
         }
     </style>
 </head>
@@ -173,7 +173,6 @@
                 this.material = matBase.clone();
                 const hue = Math.random();
                 
-                // Color the blob
                 this.material.uniforms.uColor.value.setHSL(hue, 0.6, 0.6);
                 this.material.uniforms.uSeed.value = Math.random() * 100.0;
                 this.material.uniforms.uTime = { value: 0 };
@@ -183,7 +182,6 @@
                 this.mesh.userData.parent = this;
                 scene.add(this.mesh);
                 
-                // The "face" of the text is just a darker version of the blob's color
                 const darkTextColor = `hsl(${hue * 360}, 60%, 35%)`;
 
                 this.labelEl = App.createLabelDOM(this.word, this.isTopic, darkTextColor);
@@ -228,14 +226,10 @@
                 const pixelsPerUnit = window.innerHeight / currentZoom;
                 const pixelRadius = this.radius * pixelsPerUnit;
                 
-                // SUPER SIMPLE MATH TO KEEP TEXT INSIDE:
-                // Divide an acceptable max width by the number of letters to get the font size
-                const maxAllowedWidth = pixelRadius * 1.8; // Leave a 10% margin on the edges
+                const maxAllowedWidth = pixelRadius * 1.8; 
                 
-                // Assuming average letter width is ~0.7x the font-size
                 let calculatedFontSize = maxAllowedWidth / (0.7 * Math.max(this.word.length, 3));
                 
-                // Don't let tiny words (like "AI") get absurdly massive
                 let maxFontSize = pixelRadius * 0.6; 
                 let finalScaleFactor = Math.min(calculatedFontSize, maxFontSize);
                 

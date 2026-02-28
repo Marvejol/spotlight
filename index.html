@@ -24,7 +24,6 @@
         #ui-layer { position: fixed; inset: 0; pointer-events: none; z-index: 100; padding: 20px; color: black; }
         .interactive { pointer-events: auto; }
         
-        /* Agora Input Panel */
         #agora-panel {
             position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
             background: rgba(255, 255, 255, 0.95); padding: 20px 30px; border-radius: 16px;
@@ -52,13 +51,11 @@
         
         #zoomToggle { position: absolute; top: 20px; right: 20px; border-radius: 20px; font-size: 11px; padding: 8px 16px;}
 
-        /* --- UPDATED CARVED TEXT SYSTEM --- */
         #labels-layer {
             position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
             pointer-events: none; overflow: hidden; z-index: 50;
         }
         
-        /* Base container tracks the 3D blob position */
         .blob-label-container {
             position: absolute; top: 0; left: 0;
             width: 0; height: 0;
@@ -67,26 +64,21 @@
             user-select: none;
         }
 
-        /* The refined, carved text matching feedback */
         .blob-label {
             position: absolute;
             font-family: "League Spartan", sans-serif;
-            font-weight: 700; /* Lighter weight requested */
+            font-weight: 700; 
             line-height: 1;
             white-space: nowrap;
-            letter-spacing: -0.06em; /* Very little space between letters */
-            text-transform: uppercase; /* All caps */
+            letter-spacing: -0.04em; /* Very tight spacing */
+            text-transform: uppercase;
             text-align: center;
             z-index: 10;
             
-            /* The 'carved' look placeholders. The dynamic colors are applied in JS. */
-            /* This shadow structure creates the debossed effect (dark top/left, light bottom/right) */
-            text-shadow: -1px -1px 0px rgba(0,0,0,0.3), 1px 1px 1px rgba(255,255,255,0.4); 
-        }
-
-        /* Small adjustment for topics */
-        .blob-label-container.is-topic .blob-label {
-            letter-spacing: -0.07em; /* Even tighter for main topics */
+            /* Simple Carved/Debossed effect using semi-transparent shadows */
+            text-shadow: 
+                -1px -1px 1px rgba(0, 0, 0, 0.4),  /* Dark inner shadow top-left */
+                 1px  1px 1px rgba(255, 255, 255, 0.4); /* Light edge bottom-right */
         }
     </style>
 </head>
@@ -160,19 +152,13 @@
     <script type="module">
         import * as THREE from 'three';
 
-        // 0. GLOBAL MEASURING TOOLS for Dynamic Font Scaling
-        const measuringCanvas = document.createElement('canvas');
-        const measuringContext = measuringCanvas.getContext('2d');
-        const baseMeasuringFontSize = 100;
-
         const wordMap = new Map();
         let globalIdCounter = 0;
 
-        // 1. BLOB CLASS
         class Blob {
             constructor(word, x, y, isTopic, scene, geo, matBase, labelContainer) {
                 this.id = globalIdCounter++; 
-                this.word = word.trim().toLowerCase(); 
+                this.word = word; 
                 this.isTopic = isTopic;
                 
                 this.pos = new THREE.Vector2(x, y);
@@ -184,12 +170,11 @@
                 this.radius = 0.1; 
                 this.mass = this.radius * this.radius;
                 
-                // WebGL Setup - Generate dynamic color
                 this.material = matBase.clone();
-                this.hue = Math.random();
+                const hue = Math.random();
                 
-                // Set the 3D blob color (medium base brightness)
-                this.material.uniforms.uColor.value.setHSL(this.hue, 0.6, 0.6);
+                // Color the blob
+                this.material.uniforms.uColor.value.setHSL(hue, 0.6, 0.6);
                 this.material.uniforms.uSeed.value = Math.random() * 100.0;
                 this.material.uniforms.uTime = { value: 0 };
                 this.material.uniforms.uIntensity = { value: 0 };
@@ -198,23 +183,10 @@
                 this.mesh.userData.parent = this;
                 scene.add(this.mesh);
                 
-                // --- Calculate 'Carved' Colors based on Hue ---
-                // The face of the carved text is slightly darker than the blob surface
-                const faceColor = `hsl(${this.hue * 360}, 60%, 45%)`; 
-                // The upper-left 'inner shadow' groove is quite dark
-                const innerShadowColor = `hsl(${this.hue * 360}, 60%, 20%)`; 
-                // The bottom-right 'carved edge' highlight is very bright
-                const edgeHighlightColor = `hsl(${this.hue * 360}, 60%, 80%)`;
+                // The "face" of the text is just a darker version of the blob's color
+                const darkTextColor = `hsl(${hue * 360}, 60%, 35%)`;
 
-                // --- Perform text measuring once upon creation ---
-                this.wordUpper = this.word.toUpperCase();
-                // Measure the text width at a large base size (100px)
-                // Need to ensure font is loaded before measuring (happens in App init wrapper)
-                measuringContext.font = `700 ${baseMeasuringFontSize}px 'League Spartan'`;
-                this.textWidthAt100 = measuringContext.measureText(this.wordUpper).width;
-
-                // DOM Setup using App's static factory method
-                this.labelEl = App.createLabelDOM(this.wordUpper, this.isTopic, faceColor, innerShadowColor, edgeHighlightColor);
+                this.labelEl = App.createLabelDOM(this.word, this.isTopic, darkTextColor);
                 labelContainer.appendChild(this.labelEl);
                 
                 this.recalcTarget();
@@ -245,7 +217,7 @@
             draw(camera, currentZoom) { 
                 const d = this.radius * 2.6; 
                 this.mesh.scale.set(d, d, 1); 
-                this.mesh.mesh.position.set(this.pos.x, this.pos.y, 0); 
+                this.mesh.position.set(this.pos.x, this.pos.y, 0); 
                 
                 const vector = new THREE.Vector3(this.pos.x, this.pos.y, 0);
                 vector.project(camera); 
@@ -253,34 +225,25 @@
                 const screenX = (vector.x * .5 + .5) * window.innerWidth;
                 const screenY = -(vector.y * .5 - .5) * window.innerHeight;
                 
-                // Project world radius to screen pixel radius
                 const pixelsPerUnit = window.innerHeight / currentZoom;
                 const pixelRadius = this.radius * pixelsPerUnit;
-                const pixelDiameter = pixelRadius * 2;
                 
-                // --- DYNAMIC FONT SCALING (Always stay inside) ---
+                // SUPER SIMPLE MATH TO KEEP TEXT INSIDE:
+                // Divide an acceptable max width by the number of letters to get the font size
+                const maxAllowedWidth = pixelRadius * 1.8; // Leave a 10% margin on the edges
                 
-                // Calculate max allowable dimensions (diameter minus some safe margin)
-                const safeMargin = this.isTopic ? 0.8 : 0.75; 
-                const maxAllowedWidth = pixelDiameter * safeMargin;
-                const maxAllowedHeight = pixelDiameter * safeMargin;
-
-                // Base scale target (target height)
-                const targetHeight = maxAllowedHeight * 0.65; // Font size approx target height
-
-                // Width constraint calculation:
-                // fs_width = (maxAllowedWidth / textWidthAt100) * 100
-                const fsWidth = (maxAllowedWidth / this.textWidthAt100) * baseMeasuringFontSize;
-
-                // Dynamic Font Size is the smaller of the constraints
-                const dynamicFontSize = Math.min(targetHeight, fsWidth);
+                // Assuming average letter width is ~0.7x the font-size
+                let calculatedFontSize = maxAllowedWidth / (0.7 * Math.max(this.word.length, 3));
+                
+                // Don't let tiny words (like "AI") get absurdly massive
+                let maxFontSize = pixelRadius * 0.6; 
+                let finalScaleFactor = Math.min(calculatedFontSize, maxFontSize);
                 
                 this.labelEl.style.transform = `translate(${screenX}px, ${screenY}px)`;
-                this.labelEl.style.fontSize = `${dynamicFontSize}px`;
+                this.labelEl.style.fontSize = `${finalScaleFactor}px`;
             }
         }
 
-        // 2. MAIN APP
         class App {
             constructor() {
                 this.config = { 
@@ -302,8 +265,7 @@
                 this.animate();
             }
 
-            // Static factory: clean, single-layer carved text DOM
-            static createLabelDOM(wordString, isTopic, faceColor, shadowColor, highlightColor) {
+            static createLabelDOM(wordString, isTopic, textColor) {
                 const container = document.createElement('div');
                 container.className = 'blob-label-container';
                 if(isTopic) container.classList.add('is-topic');
@@ -311,13 +273,7 @@
                 const text = document.createElement('div');
                 text.className = 'blob-label';
                 text.innerText = wordString;
-                
-                // Set Dynamic Carved Colors
-                text.style.color = faceColor;
-                // Complex text-shadow for debossed 'carved' look: 
-                // -2px -2px shadow inside top-left groove
-                // 1px 1px highlight outside bottom-right carved edge
-                text.style.textShadow = `-2px -2px 1px ${shadowColor}, 1px 1px 1px ${highlightColor}`;
+                text.style.color = textColor; 
 
                 container.appendChild(text);
                 return container;
@@ -468,13 +424,7 @@
             }
         }
         
-        // --- CRITICAL INITIALIZATION ---
-        // We MUST wait for the custom font to load before measuring text width,
-        // otherwise measuringContext.measureText will measure default browser fonts.
-        document.fonts.ready.then(() => {
-            console.log("League Spartan Loaded. Initializing App.");
-            window.app = new App();
-        });
+        window.app = new App();
     </script>
 </body>
 </html>

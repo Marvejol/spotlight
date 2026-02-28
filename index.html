@@ -7,7 +7,7 @@
     
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=League+Spartan:wght@900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=League+Spartan:wght@700&display=swap" rel="stylesheet">
     
     <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
     <script type="importmap">
@@ -52,7 +52,7 @@
         
         #zoomToggle { position: absolute; top: 20px; right: 20px; border-radius: 20px; font-size: 11px; padding: 8px 16px;}
 
-        /* --- UPDATED TEXT OVERLAY SYSTEM --- */
+        /* --- UPDATED CARVED TEXT SYSTEM --- */
         #labels-layer {
             position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
             pointer-events: none; overflow: hidden; z-index: 50;
@@ -67,21 +67,26 @@
             user-select: none;
         }
 
-        /* The bold, solid text matching the screenshot */
+        /* The refined, carved text matching feedback */
         .blob-label {
             position: absolute;
             font-family: "League Spartan", sans-serif;
-            font-weight: 900; /* Extra bold */
+            font-weight: 700; /* Lighter weight requested */
             line-height: 1;
             white-space: nowrap;
-            letter-spacing: -0.06em; /* Tight kerning */
+            letter-spacing: -0.06em; /* Very little space between letters */
             text-transform: uppercase; /* All caps */
             text-align: center;
             z-index: 10;
+            
+            /* The 'carved' look placeholders. The dynamic colors are applied in JS. */
+            /* This shadow structure creates the debossed effect (dark top/left, light bottom/right) */
+            text-shadow: -1px -1px 0px rgba(0,0,0,0.3), 1px 1px 1px rgba(255,255,255,0.4); 
         }
 
+        /* Small adjustment for topics */
         .blob-label-container.is-topic .blob-label {
-            font-size: 1.2em; /* Topics are just slightly larger */
+            letter-spacing: -0.07em; /* Even tighter for main topics */
         }
     </style>
 </head>
@@ -155,6 +160,11 @@
     <script type="module">
         import * as THREE from 'three';
 
+        // 0. GLOBAL MEASURING TOOLS for Dynamic Font Scaling
+        const measuringCanvas = document.createElement('canvas');
+        const measuringContext = measuringCanvas.getContext('2d');
+        const baseMeasuringFontSize = 100;
+
         const wordMap = new Map();
         let globalIdCounter = 0;
 
@@ -162,7 +172,7 @@
         class Blob {
             constructor(word, x, y, isTopic, scene, geo, matBase, labelContainer) {
                 this.id = globalIdCounter++; 
-                this.word = word; 
+                this.word = word.trim().toLowerCase(); 
                 this.isTopic = isTopic;
                 
                 this.pos = new THREE.Vector2(x, y);
@@ -176,10 +186,10 @@
                 
                 // WebGL Setup - Generate dynamic color
                 this.material = matBase.clone();
-                const hue = Math.random();
+                this.hue = Math.random();
                 
-                // Set the 3D blob color (lighter base)
-                this.material.uniforms.uColor.value.setHSL(hue, 0.6, 0.6);
+                // Set the 3D blob color (medium base brightness)
+                this.material.uniforms.uColor.value.setHSL(this.hue, 0.6, 0.6);
                 this.material.uniforms.uSeed.value = Math.random() * 100.0;
                 this.material.uniforms.uTime = { value: 0 };
                 this.material.uniforms.uIntensity = { value: 0 };
@@ -188,11 +198,23 @@
                 this.mesh.userData.parent = this;
                 scene.add(this.mesh);
                 
-                // Calculate a much darker shade of the exact same hue for the text
-                const darkTextColor = `hsl(${hue * 360}, 60%, 25%)`;
+                // --- Calculate 'Carved' Colors based on Hue ---
+                // The face of the carved text is slightly darker than the blob surface
+                const faceColor = `hsl(${this.hue * 360}, 60%, 45%)`; 
+                // The upper-left 'inner shadow' groove is quite dark
+                const innerShadowColor = `hsl(${this.hue * 360}, 60%, 20%)`; 
+                // The bottom-right 'carved edge' highlight is very bright
+                const edgeHighlightColor = `hsl(${this.hue * 360}, 60%, 80%)`;
+
+                // --- Perform text measuring once upon creation ---
+                this.wordUpper = this.word.toUpperCase();
+                // Measure the text width at a large base size (100px)
+                // Need to ensure font is loaded before measuring (happens in App init wrapper)
+                measuringContext.font = `700 ${baseMeasuringFontSize}px 'League Spartan'`;
+                this.textWidthAt100 = measuringContext.measureText(this.wordUpper).width;
 
                 // DOM Setup using App's static factory method
-                this.labelEl = App.createLabelDOM(this.word, this.isTopic, darkTextColor);
+                this.labelEl = App.createLabelDOM(this.wordUpper, this.isTopic, faceColor, innerShadowColor, edgeHighlightColor);
                 labelContainer.appendChild(this.labelEl);
                 
                 this.recalcTarget();
@@ -223,7 +245,7 @@
             draw(camera, currentZoom) { 
                 const d = this.radius * 2.6; 
                 this.mesh.scale.set(d, d, 1); 
-                this.mesh.position.set(this.pos.x, this.pos.y, 0); 
+                this.mesh.mesh.position.set(this.pos.x, this.pos.y, 0); 
                 
                 const vector = new THREE.Vector3(this.pos.x, this.pos.y, 0);
                 vector.project(camera); 
@@ -231,14 +253,30 @@
                 const screenX = (vector.x * .5 + .5) * window.innerWidth;
                 const screenY = -(vector.y * .5 - .5) * window.innerHeight;
                 
+                // Project world radius to screen pixel radius
                 const pixelsPerUnit = window.innerHeight / currentZoom;
                 const pixelRadius = this.radius * pixelsPerUnit;
+                const pixelDiameter = pixelRadius * 2;
                 
-                // Increased the scaling factor to match the screenshot proportion
-                const scaleFactor = pixelRadius * 0.45; 
+                // --- DYNAMIC FONT SCALING (Always stay inside) ---
+                
+                // Calculate max allowable dimensions (diameter minus some safe margin)
+                const safeMargin = this.isTopic ? 0.8 : 0.75; 
+                const maxAllowedWidth = pixelDiameter * safeMargin;
+                const maxAllowedHeight = pixelDiameter * safeMargin;
+
+                // Base scale target (target height)
+                const targetHeight = maxAllowedHeight * 0.65; // Font size approx target height
+
+                // Width constraint calculation:
+                // fs_width = (maxAllowedWidth / textWidthAt100) * 100
+                const fsWidth = (maxAllowedWidth / this.textWidthAt100) * baseMeasuringFontSize;
+
+                // Dynamic Font Size is the smaller of the constraints
+                const dynamicFontSize = Math.min(targetHeight, fsWidth);
                 
                 this.labelEl.style.transform = `translate(${screenX}px, ${screenY}px)`;
-                this.labelEl.style.fontSize = `${scaleFactor}px`;
+                this.labelEl.style.fontSize = `${dynamicFontSize}px`;
             }
         }
 
@@ -264,8 +302,8 @@
                 this.animate();
             }
 
-            // Updated static factory for creating the clean, single-layer text DOM
-            static createLabelDOM(wordString, isTopic, textColor) {
+            // Static factory: clean, single-layer carved text DOM
+            static createLabelDOM(wordString, isTopic, faceColor, shadowColor, highlightColor) {
                 const container = document.createElement('div');
                 container.className = 'blob-label-container';
                 if(isTopic) container.classList.add('is-topic');
@@ -273,7 +311,13 @@
                 const text = document.createElement('div');
                 text.className = 'blob-label';
                 text.innerText = wordString;
-                text.style.color = textColor; // Apply the calculated dark shade
+                
+                // Set Dynamic Carved Colors
+                text.style.color = faceColor;
+                // Complex text-shadow for debossed 'carved' look: 
+                // -2px -2px shadow inside top-left groove
+                // 1px 1px highlight outside bottom-right carved edge
+                text.style.textShadow = `-2px -2px 1px ${shadowColor}, 1px 1px 1px ${highlightColor}`;
 
                 container.appendChild(text);
                 return container;
@@ -424,7 +468,13 @@
             }
         }
         
-        window.app = new App();
+        // --- CRITICAL INITIALIZATION ---
+        // We MUST wait for the custom font to load before measuring text width,
+        // otherwise measuringContext.measureText will measure default browser fonts.
+        document.fonts.ready.then(() => {
+            console.log("League Spartan Loaded. Initializing App.");
+            window.app = new App();
+        });
     </script>
 </body>
 </html>
